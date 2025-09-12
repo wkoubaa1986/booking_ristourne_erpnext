@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fiche Client – Ristourne</title>
+  <link rel="icon" href="/files/aquaword-icon-120x120.png" type="image/png">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body{font-family:Arial,sans-serif;background:#f9f9f9;margin:0;padding:10px}
+    .container{max-width:900px;margin:auto;background:#fff;border-radius:8px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,.1);text-align:center}
+    .banner{width:100%;height:auto;margin-bottom:10px}
+    .tabs{margin-top:10px;display:flex;justify-content:center;gap:6px}
+    .tab-button{flex:1;padding:10px;cursor:pointer;background:#f0f0f0;border:1px solid #ccc;font-weight:bold}
+    .tab-button.active{background:#007bff;color:#fff}
+    .tab-content{display:none;margin-top:20px}
+    .tab-content.active{display:block}
+    canvas{width:100% !important;height:auto !important}
+    table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
+    th,td{padding:8px;border:1px solid #ddd;text-align:center}
+    th{background:#f2f2f2}
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <img src="/files/sigle entreprise_Tc6a573.png" alt="AquaWorld Banner" class="banner">
+  </header>
+
+  <h2 id="page-title">Chargement...</h2>
+  <div id="links-content"></div>
+
+  <div class="tabs">
+    <div class="tab-button active" onclick="showTab('tab-info')">ℹ️ Info</div>
+    <div class="tab-button" onclick="showTab('tab-ventes')">💰 Total Ventes</div>
+    <div class="tab-button" onclick="showTab('tab-groupes')">📦 Quantité par Groupe</div>
+  </div>
+
+  <div id="tab-info" class="tab-content active">
+    <div id="info-content">Chargement des informations personnalisées...</div>
+  </div>
+
+  <div id="tab-ventes" class="tab-content">
+    <div id="summary"></div>
+    <canvas id="ristourneChart"></canvas>
+    <div id="paliers_table"></div>
+  </div>
+
+  <div id="tab-groupes" class="tab-content">
+    <h3>Quantité par Groupe d'Articles</h3>
+    <canvas id="groupChart"></canvas>
+    <div id="group_table"></div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const token = urlParams.get('token');
+
+  if (!token) {
+    alert("Session expirée. Veuillez vous reconnecter.");
+    window.location.href = '/client_login';
+    return;
+  }
+
+  fetch(`/api/method/booking_ristourne.ristourne.check_token_validity?token=${encodeURIComponent(token)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.message || data.message.status !== 'valid') {
+        alert("Session expirée. Veuillez vous reconnecter.");
+        window.location.href = '/client_login';
+      } else {
+        const customer = data.message.customer_name;
+        document.getElementById('page-title').textContent = `Fiche client – ${customer}`;
+
+        loadInfoMessage(customer);
+
+        // log connexion (optionnel)
+        fetch(`/api/method/booking_ristourne.ristourne.log_customer_login?customer_name=${encodeURIComponent(customer)}`)
+          .catch(()=>{});
+
+        loadDashboard(token);
+
+        // ping régulier
+        setInterval(() => {
+          fetch(`/api/method/booking_ristourne.ristourne.check_token_validity?token=${encodeURIComponent(token)}`)
+            .then(r => r.json())
+            .then(d => {
+              if (!d.message || d.message.status !== 'valid') {
+                alert("Session expirée pendant votre session. Veuillez vous reconnecter.");
+                window.location.href = '/client_login';
+              }
+            })
+            .catch(() => {
+              alert("Erreur de vérification. Déconnexion forcée.");
+              window.location.href = '/client_login';
+            });
+        }, 2 * 60 * 1000);
+      }
+    })
+    .catch(() => {
+      alert("Erreur de vérification. Veuillez vous reconnecter.");
+      window.location.href = '/client_login';
+    });
+});
+
+function showTab(tabId) {
+  document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelector(`[onclick="showTab('${tabId}')"]`).classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+function loadInfoMessage(customerName) {
+  fetch(`/api/method/booking_ristourne.ristourne.get_info_message?customer_name=${encodeURIComponent(customerName)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.message && data.message.message) {
+        document.getElementById('info-content').innerHTML = data.message.message;
+      } else if (data.message) {
+        document.getElementById('info-content').innerHTML = data.message;
+      } else {
+        document.getElementById('info-content').innerHTML = '<p>Erreur lors du chargement des informations personnalisées.</p>';
+      }
+      if (data.message && data.message.links_html) {
+        document.getElementById('links-content').innerHTML = data.message.links_html;
+      }
+    })
+    .catch(() => {
+      document.getElementById('info-content').innerHTML = '<p>Erreur lors du chargement des informations personnalisées.</p>';
+    });
+}
+
+function loadDashboard(token) {
+  fetch(`/api/method/booking_ristourne.ristourne.generate_ristourne_report_with_token?token=${encodeURIComponent(token)}`)
+    .then(r => r.json())
+    .then(data => {
+      const r = data.message;
+      if (!r) { alert('Aucune donnée retournée.'); return; }
+
+      if (r.has_ristourne) {
+        document.getElementById('summary').innerHTML =
+          `<h3>Total HT : ${r.total_ht.toFixed(2)} TND | Ristourne Calculée : ${r.ristourne.toFixed(2)} TND</h3>`;
+      } else {
+        document.getElementById('summary').innerHTML =
+          `<h3>Total HT : ${r.total_ht.toFixed(2)} TND</h3><p style="color:#888;">Aucune ristourne définie pour vous actuellement.</p>`;
+      }
+
+      const labels = Object.keys(r.monthly_sales);
+      const values = Object.values(r.monthly_sales);
+      labels.push("TOTAL"); values.push(r.total_ht);
+
+      const ctx = document.getElementById('ristourneChart').getContext('2d');
+      if (window.salesChartInstance) window.salesChartInstance.destroy();
+      window.salesChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{ label: 'Total des ventes livrées HT (TND)', data: values,
+            backgroundColor: labels.map(l => l==="TOTAL" ? 'rgba(255,159,64,.7)':'rgba(75,192,192,.7)')}]
+        },
+        options: { responsive:true, scales:{ y:{ beginAtZero:true } } }
+      });
+
+      if (r.has_ristourne && r.paliers.length > 0) {
+        let html = `
+          <h3>Détails des Paliers</h3>
+          <table>
+            <tr>
+              <th>Min (TND)</th><th>Max (TND)</th><th>% Réduction</th>
+              <th>Montant HT Appliqué (TND)</th><th>Ristourne Appliquée (TND)</th>
+            </tr>`;
+        r.paliers.forEach(p => {
+          html += `<tr>
+            <td>${p.palier_minimum.toFixed(2)}</td>
+            <td>${p.palier_maximum ? p.palier_maximum.toFixed(2) : '∞'}</td>
+            <td>${p.pourcentage.toFixed(2)}%</td>
+            <td>${p.montant_applique_ht.toFixed(2)}</td>
+            <td>${p.montant_ristourne.toFixed(2)}</td>
+          </tr>`;
+        });
+        html += `<tr style="font-weight:bold;background:#f0f0f0;">
+          <td colspan="3">TOTAL</td><td>${r.total_ht.toFixed(2)}</td><td>${r.ristourne.toFixed(2)}</td></tr></table>`;
+        document.getElementById('paliers_table').innerHTML = html;
+      } else {
+        document.getElementById('paliers_table').innerHTML =
+          `<p style="color:#888;">Aucune ristourne configurée pour vous. Votre CA total est : <strong>${r.total_ht.toFixed(2)} TND</strong>.</p>`;
+      }
+
+      fetchGroupQuantities(token);
+    })
+    .catch(err => alert('Erreur lors de la récupération des données : ' + err.message));
+}
+
+function fetchGroupQuantities(token) {
+  fetch(`/api/method/booking_ristourne.ristourne.get_grouped_article_quantities_by_month_with_token?token=${encodeURIComponent(token)}`)
+    .then(r => r.json())
+    .then(data => {
+      const r = data.message;
+      if (!r) { alert('Aucune donnée retournée pour les groupes.'); return; }
+
+      const months = r.months;
+      const groups = r.groups;
+
+      const gctx = document.getElementById('groupChart').getContext('2d');
+      if (window.groupChartInstance) window.groupChartInstance.destroy();
+
+      const datasets = groups.map(g => ({
+        label: g.item_group,
+        data: g.quantities,
+        backgroundColor: randomColor()
+      }));
+
+      window.groupChartInstance = new Chart(gctx, {
+        type: 'bar',
+        data: { labels: months, datasets },
+        options: {
+          responsive:true,
+          scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } },
+          plugins:{ legend:{ position:'top' } }
+        }
+      });
+
+      let tableHtml = `<h3>Détails Quantité par Groupe</h3><table><tr><th>Groupe</th>${months.map(m=>`<th>${m}</th>`).join('')}</tr>`;
+      groups.forEach(g => {
+        tableHtml += `<tr><td>${g.item_group}</td>${g.quantities.map(q=>`<td>${q}</td>`).join('')}</tr>`;
+      });
+      tableHtml += '</table>';
+      document.getElementById('group_table').innerHTML = tableHtml;
+    })
+    .catch(err => alert('Erreur lors de la récupération des données groupes : ' + err.message));
+}
+
+function randomColor(){
+  const r=Math.floor(Math.random()*200), g=Math.floor(Math.random()*200), b=Math.floor(Math.random()*200);
+  return `rgba(${r},${g},${b},0.7)`;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/files/aquaword-icon-120x120.png" />
+  <title>Connexion Client – AquaWorld & Servicing</title>
+  <style>
+    body{font-family:Arial,sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f4f4f4}
+    .container{background:#fff;padding:20px 30px;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.1);max-width:400px;width:100%;text-align:center}
+    .container img{width:100%;height:auto;display:block;margin:0 auto 10px}
+    .banner{width:100%;height:auto;margin-bottom:10px}
+    h1{font-size:22px;margin-bottom:20px}
+    input{width:60%;padding:10px;margin:10px 0;border-radius:4px;border:1px solid #ccc;font-size:20px;text-align:center}
+    button{width:50%;padding:10px;background:#007bff;color:#fff;border:none;border-radius:4px;font-size:16px;cursor:pointer}
+    button:hover{background:#0056b3}
+    .hidden{display:none}
+    .error{color:#d00;font-size:14px;margin-top:5px;min-height:18px}
+    .ok{color:#0a7}
+    .warn{color:#b78100}
+    #resend-button[disabled]{background:#ccc !important;cursor:not-allowed}
+    #resend-button.enabled{background:#28a745}
+    #resend-button.enabled:hover{background:#218838}
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <img src="/files/sigle entreprise_Tc6a573.png" alt="AquaWorld Banner" class="banner" />
+  <h1>Connexion Client</h1>
+
+  <div id="phone-step" aria-live="polite">
+    <p>Entrez votre numéro de téléphone :</p>
+    <input type="text" id="phone" placeholder="Numéro (8 chiffres)" inputmode="numeric" maxlength="8" autocomplete="tel" />
+    <br />
+    <button id="send-btn">Envoyer le code</button>
+    <div id="phone-error" class="error"></div>
+  </div>
+
+  <div id="code-step" class="hidden" aria-live="polite">
+    <p>Code envoyé par SMS. Entrez-le :</p>
+    <!-- on ne restreint plus au numérique ni à 6 caractères -->
+    <input type="password" id="code" placeholder="Code reçu" maxlength="64" autocomplete="one-time-code" />
+    <br />
+    <div style="display:flex;justify-content:center;gap:10px;margin-top:10px;">
+      <button id="verify-btn">Valider</button>
+      <button id="resend-button" disabled style="background:#6c757d;">Re-envoyer le code (60s)</button>
+    </div>
+    <div id="code-error" class="error"></div>
+  </div>
+</div>
+
+<script>
+let phoneNumber = "";
+let resendCountdown = 60;
+let resendInterval = null;
+
+const resendButton = document.getElementById('resend-button');
+const sendBtn = document.getElementById('send-btn');
+const verifyBtn = document.getElementById('verify-btn');
+const phoneInput = document.getElementById('phone');
+const codeInput  = document.getElementById('code');
+
+resendButton.addEventListener('click', resendCode);
+sendBtn.addEventListener('click', sendCode);
+verifyBtn.addEventListener('click', verifyCode);
+
+// Enter = action rapide
+phoneInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendCode(); });
+codeInput.addEventListener('keydown',  (e)=>{ if(e.key==='Enter') verifyCode(); });
+
+function startResendTimer() {
+  clearInterval(resendInterval);
+  resendCountdown = 60;
+  resendButton.disabled = true;
+  resendButton.classList.remove('enabled');
+  resendButton.textContent = `Re-envoyer le code (${resendCountdown}s)`;
+  resendInterval = setInterval(() => {
+    resendCountdown--;
+    resendButton.textContent = `Re-envoyer le code (${resendCountdown}s)`;
+    if (resendCountdown <= 0) {
+      clearInterval(resendInterval);
+      resendButton.disabled = false;
+      resendButton.classList.add('enabled');
+      resendButton.textContent = 'Re-envoyer le code';
+    }
+  }, 1000);
+}
+
+function setBusy(btn, busyText) {
+  btn.dataset._label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = busyText;
+}
+function clearBusy(btn) {
+  btn.disabled = false;
+  if (btn.dataset._label) btn.textContent = btn.dataset._label;
+}
+
+function setMsg(el, text, kind='err') {
+  el.classList.remove('ok','warn','error');
+  if (kind==='ok') el.classList.add('ok');
+  else if (kind==='warn') el.classList.add('warn');
+  else el.classList.add('error');
+  el.textContent = text || '';
+}
+
+// Frappe sometimes returns JSON-encoded _server_messages (array of strings)
+function parseFrappeServerMessage(payload) {
+  const raw = payload && (payload._server_messages || payload._error_message);
+  if (!raw) return null;
+  try {
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr) && arr.length) {
+      // often messages are JSON strings too, try to unwrap once
+      try {
+        const first = JSON.parse(arr[0]);
+        return first.message || first || null;
+      } catch {
+        return arr[0];
+      }
+    }
+  } catch {
+    // not JSON, show raw
+    return raw;
+  }
+  return null;
+}
+
+function normalizeResponse(obj) {
+  // Backend may return {message: {...}} or direct object
+  const data = obj && (obj.message || obj) || {};
+  const fromServerMsg = parseFrappeServerMessage(data);
+  return {
+    status: (data.status || '').toLowerCase(),
+    message: data.message || fromServerMsg || data.error || null,
+    token: data.token,
+    customer_name: data.customer_name
+  };
+}
+
+async function sendCode() {
+  const phoneError = document.getElementById('phone-error');
+  setMsg(phoneError, '');
+
+  phoneNumber = phoneInput.value.trim();
+  if (!/^\d{8}$/.test(phoneNumber)) {
+    setMsg(phoneError, "Veuillez entrer un numéro à 8 chiffres.", 'warn');
+    return;
+  }
+
+  setBusy(sendBtn, 'Envoi…');
+
+  try {
+    const r = await fetch(`/api/method/booking_ristourne.ristourne.send_login_code?phone_number=${encodeURIComponent(phoneNumber)}`);
+    const payload = await r.json();
+    const { status, message } = normalizeResponse(payload);
+
+    if (status === 'ok' || status === 'sent') {
+      // passe à l’étape OTP
+      document.getElementById('phone-step').classList.add('hidden');
+      document.getElementById('code-step').classList.remove('hidden');
+      startResendTimer();
+      codeInput.focus();
+      setMsg(phoneError, '');
+    } else if (status === 'denied') {
+      // accès refusé (affiche raison claire depuis backend)
+      setMsg(phoneError, message || "Accès refusé. Veuillez contacter notre service commercial.", 'warn');
+    } else if (status === 'error') {
+      setMsg(phoneError, message || "Une erreur interne est survenue. Merci de réessayer.");
+    } else {
+      setMsg(phoneError, message || "Erreur d'envoi du code.");
+    }
+  } catch (e) {
+    setMsg(phoneError, "Problème de connexion au serveur. Réessayez dans un instant.");
+  } finally {
+    clearBusy(sendBtn);
+  }
+}
+
+async function resendCode() {
+  const codeError = document.getElementById('code-error');
+  setMsg(codeError, '');
+  setBusy(resendButton, 'Envoi…');
+
+  try {
+    const r = await fetch(`/api/method/booking_ristourne.ristourne.send_login_code?phone_number=${encodeURIComponent(phoneNumber)}`);
+    const payload = await r.json();
+    const { status, message } = normalizeResponse(payload);
+
+    if (status === 'ok' || status === 'sent') {
+      startResendTimer();
+      setMsg(codeError, "Nouveau code envoyé.", 'ok');
+    } else if (status === 'denied') {
+      setMsg(codeError, message || "Accès refusé. Veuillez contacter notre service commercial.", 'warn');
+    } else {
+      setMsg(codeError, message || "Erreur lors du renvoi du code.");
+    }
+  } catch {
+    setMsg(codeError, "Erreur serveur lors du renvoi.");
+  } finally {
+    clearBusy(resendButton);
+  }
+}
+
+async function verifyCode() {
+  const codeError = document.getElementById('code-error');
+  setMsg(codeError, '');
+
+  const code = codeInput.value.trim();
+  if (!code) {
+    setMsg(codeError, "Veuillez entrer votre code.", 'warn');
+    return;
+  }
+
+  setBusy(verifyBtn, 'Vérification…');
+
+  try {
+    const r = await fetch(`/api/method/booking_ristourne.ristourne.verify_login_code?phone_number=${encodeURIComponent(phoneNumber)}&code=${encodeURIComponent(code)}`);
+    const payload = await r.json();
+    const { status, message, token } = normalizeResponse(payload);
+
+    if (status === 'verified') {
+      window.location.href = `/fiche_client?token=${encodeURIComponent(token)}`;
+    } else if (status === 'error') {
+      setMsg(codeError, message || "Une erreur est survenue. Réessayez.");
+    } else {
+      // invalide / expiré / messages précis backend
+      setMsg(codeError, message || "Code invalide.");
+    }
+  } catch {
+    setMsg(codeError, "Erreur serveur.");
+  } finally {
+    clearBusy(verifyBtn);
+  }
+}
+</script>
+
+</body>
+</html>

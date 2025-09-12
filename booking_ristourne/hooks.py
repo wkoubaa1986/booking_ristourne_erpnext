@@ -241,4 +241,69 @@ app_license = "mit"
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
+fixtures = [
+    # ---- Scripts ----
+    {
+        "doctype": "Server Script",
+        "filters": [
+            ["module", "=", "Booking Ristourne"],
+            # facultatif: ["enabled", "=", 1],
+        ],
+    },
+    {
+        "doctype": "Client Script",
+        "filters": [
+            ["module", "=", "Booking Ristourne"],
+            # facultatif: ["enabled", "=", 1],
+        ],
+    },
 
+    # Print Formats
+    {
+        "doctype": "Print Format",
+        "filters": [
+            ["name", "in", [
+                "Aqua World BC", "Aqua World BL", "Aqua world Devis", "Aqua World Facture",
+            ]]
+        ]
+    },
+
+    # ---- Customisations de champs ----
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["dt", "in", ["Customer", "Sales Order"]],
+            ["fieldname", "in", [
+                "custom_autoriser_acces_fiche_client",   # Customer (checkbox par défaut)
+                "custom_ristourne_disponible",           # Sales Order
+                "custom_appliquer_ristourne",            # Sales Order
+            ]],
+        ],
+    },
+    # si tu as mis un Default=1 sur le checkbox via Property Setter :
+    {
+        "doctype": "Property Setter",
+        "filters": [
+            ["doc_type", "in", ["Customer", "Sales Order"]],
+        ],
+    },
+]
+scheduler_events = {
+    "cron": {
+        # ┌─ minute (0)
+        # │ ┌─ hour (10)
+        # │ │ ┌─ day of month (1)
+        # │ │ │ ┌─ month (1 = January)
+        # │ │ │ │ ┌─ day of week (* = any)
+        # │ │ │ │ │
+        "0 10 1 1 *": [
+            "booking_ristourne.jobs.yearly_generate_ristournes_job"
+        ]
+    }
+}
+doc_events = {
+    "Sales Order": {
+        "on_submit": "booking_ristourne.sales_order.on_sales_order_submit",
+        "before_cancel": "booking_ristourne.sales_order.on_sales_order_cancel",
+    }
+}
