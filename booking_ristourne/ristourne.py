@@ -7,6 +7,8 @@ import hashlib
 from frappe.utils import generate_hash
 from collections import defaultdict
 from frappe.core.doctype.sms_settings.sms_settings import send_sms as frappe_send_sms
+from urllib.parse import quote 
+from functools import lru_cache
 from frappe import _
 
 # =========================
@@ -24,9 +26,22 @@ def find_applicable_ristourne(customer):
     client_doc = frappe.get_doc("Customer", customer)
     group = client_doc.customer_group
 
-    ristourne = frappe.get_value("Ristourne", {"client": customer}, "*", as_dict=True)
+    # 1️⃣ Ristourne spécifique au client, uniquement validée
+    ristourne = frappe.get_value(
+        "Ristourne",
+        {"client": customer, "docstatus": 1},
+        "*",
+        as_dict=True,
+    )
+
+    # 2️⃣ Sinon, ristourne par groupe client, uniquement validée
     if not ristourne:
-        ristourne = frappe.get_value("Ristourne", {"group_client": group}, "*", as_dict=True)
+        ristourne = frappe.get_value(
+            "Ristourne",
+            {"group_client": group, "docstatus": 1},
+            "*",
+            as_dict=True,
+        )
 
     return ristourne
 
@@ -126,7 +141,7 @@ def generate_ristourne_report(customer):
             "paliers": [],
             "has_ristourne": False
         }
-
+    
     # ✅ If ristourne exists → normal flow
     try:
         month_list = generate_month_list(ristourne.get("valable_de"), ristourne.get("valable_jusquà"))
@@ -163,55 +178,184 @@ def get_grouped_article_quantities_by_month_with_token(token):
         frappe.throw("Session expirée. Veuillez vous reconnecter.")
     return get_grouped_article_quantities_by_month(customer)
 
+def get_item_group_tree():
+    """
+    Builds the full Item Group tree from ERPNext, preserving the order (lft)
+    and preparing a month_qty dict for each group.
+    """
+    groups = frappe.get_all(
+        "Item Group",
+        filters={},  # all groups
+        fields=["name", "parent_item_group", "lft", "rgt", "is_group"],
+        order_by="lft asc",
+    )
+
+    tree = {}
+    children_map = defaultdict(list)
+
+    for g in groups:
+        name = g.get("name")
+        parent = g.get("parent_item_group")
+        tree[name] = {
+            "name": name,
+            "parent": parent,
+            "is_group": g.get("is_group"),
+            "lft": g.get("lft") or 0,
+            "rgt": g.get("rgt") or 0,
+            "children": [],
+            "month_qty": defaultdict(float),  # month -> qty
+        }
+        if parent:
+            children_map[parent].append(name)
+
+    # link children
+    for parent, child_list in children_map.items():
+        if parent in tree:
+            tree[parent]["children"] = child_list
+
+    return tree
+
 def get_grouped_article_quantities_by_month(customer):
+    """
+    Returns quantities per Item Group per month for a given customer, based on
+    Delivery Notes, following the Item Group hierarchy from ERPNext.
+
+    Output format (compatible with your current JS):
+
+    {
+        "months": ["2025-01", "2025-02", ..., "Moyenne"],
+        "groups": [
+            {
+                "item_group": "Osmoseur Domestique",
+                "parent_item_group": None,
+                "is_group": 1,
+                "quantities": [10, 20, ..., avg]
+            },
+            {
+                "item_group": "Osmoseur 5 étages",
+                "parent_item_group": "Osmoseur Domestique",
+                "is_group": 0,
+                "quantities": [4, 12, ..., avg]
+            },
+            ...
+        ]
+    }
+    """
+    # 🔎 Ristourne used to define the start date
     ristourne = find_applicable_ristourne(customer)
-    # ✅ If no ristourne, start from the beginning of the current year
-    if not ristourne:
-        current_year = getdate(today()).year
-        start_date = f"{current_year}-01-01"
-    else:
+    current_year = getdate(today()).year
+    if ristourne and ristourne.get("valable_de"):
         start_date = ristourne["valable_de"]
+    else:
+        
+        start_date = f"{current_year}-01-01"
 
-    end_date = today()
+    end_date = f"{current_year}-12-31"
 
-    dn_items = frappe.db.sql("""
-        SELECT dni.item_group, dni.qty, dn.posting_date
+    month_list = generate_month_list(start_date, end_date)
+    total_months = len(month_list) if month_list else 0
+
+    # 1) Build Item Group tree
+    tree = get_item_group_tree()
+
+    # 2) Fetch delivery note lines for this customer
+    #    👉 item_group is taken from the Item master (tabItem), not from the DN line
+    dn_items = frappe.db.sql(
+        """
+        SELECT
+            i.item_group AS item_group,
+            dni.qty,
+            dn.posting_date
         FROM `tabDelivery Note` dn
         JOIN `tabDelivery Note Item` dni ON dn.name = dni.parent
+        JOIN `tabItem` i ON i.name = dni.item_code
         WHERE dn.docstatus = 1
           AND dn.customer = %s
           AND dn.posting_date BETWEEN %s AND %s
-    """, (customer, start_date, end_date), as_dict=True)
+        """,
+        (customer, start_date, end_date),
+        as_dict=True,
+    )
 
-    month_list = generate_month_list(start_date, end_date)
-    total_months = len(month_list)
-
-    group_month_qty = defaultdict(lambda: defaultdict(float))
-
+    # 3) Fill quantities on the leaf group (current Item.item_group)
     for row in dn_items:
         month = getdate(row.posting_date).strftime("%Y-%m")
-        group_month_qty[row.item_group][month] += float(row.qty or 0)
+        qty = float(row.qty or 0)
+        group_name = row.item_group
 
+        if not group_name:
+            continue
+
+        if group_name not in tree:
+            # Group not found in Item Group tree -> put under "Autres"
+            if "_AUTRES_" not in tree:
+                tree["_AUTRES_"] = {
+                    "name": "Autres",
+                    "parent": None,
+                    "is_group": 0,
+                    "lft": 999999,
+                    "rgt": 999999,
+                    "children": [],
+                    "month_qty": defaultdict(float),
+                }
+            group_name = "_AUTRES_"
+
+        tree[group_name]["month_qty"][month] += qty
+
+    # 4) Roll-up: sum children -> parent (using the tree)
+    @lru_cache(maxsize=None)
+    def roll_up(group_name):
+        g = tree[group_name]
+
+        # If no children, it's a leaf: keep its own month_qty
+        if not g["children"]:
+            return g["month_qty"]
+
+        total = defaultdict(float)
+        for child_name in g["children"]:
+            child_tot = roll_up(child_name)
+            for m, q in child_tot.items():
+                total[m] += q
+
+        g["month_qty"] = total
+        return total
+
+    # Find root groups (no parent) and roll up from there
+    root_groups = [name for name, g in tree.items() if not g["parent"]]
+
+    for root in root_groups:
+        if root in tree:
+            roll_up(root)
+
+    # 5) Build final list sorted by lft (same order as Item Group tree)
     result_groups = []
-    for group, month_data in group_month_qty.items():
+
+    for g in sorted(tree.values(), key=lambda x: x["lft"]):
         quantities = []
-        total_qty = 0
-        for month in month_list:
-            qty = month_data.get(month, 0)
-            quantities.append(qty)
-            total_qty += qty
+        total_qty = 0.0
 
-        average_qty = total_qty / total_months if total_months else 0
-        quantities.append(round(average_qty, 2))
+        for m in month_list:
+            q = float(g["month_qty"].get(m, 0))
+            quantities.append(q)
+            total_qty += q
 
-        result_groups.append({
-            "item_group": group,
-            "quantities": quantities
-        })
+        avg = total_qty / total_months if total_months else 0
+        quantities.append(round(avg, 2))
+
+        result_groups.append(
+            {
+                "item_group": g["name"],
+                "parent_item_group": g["parent"],
+                "is_group": g["is_group"],
+                "quantities": quantities,
+            }
+        )
+
+    frappe.logger().info("Grouped article quantities by month: %s", result_groups)
 
     return {
         "months": month_list + ["Moyenne"],
-        "groups": result_groups
+        "groups": result_groups,
     }
 
 # ==========================
@@ -377,7 +521,7 @@ def verify_login_code(phone_number, code):
     if _check_global_code(code):
         _reset_attempts(phone_number)
         session_token = generate_hash(length=32)
-        frappe.cache().set_value(f"session_token_{session_token}", matched_customer, expires_in_sec=600)
+        frappe.cache().set_value(f"session_token_{session_token}", matched_customer, expires_in_sec=3600)
         return {"status": "verified", "token": session_token, "customer_name": matched_customer}
 
     # 4) Chemin B — OTP
@@ -393,7 +537,7 @@ def verify_login_code(phone_number, code):
 
     # Générer le token de session
     session_token = generate_hash(length=32)
-    frappe.cache().set_value(f"session_token_{session_token}", matched_customer, expires_in_sec=600)
+    frappe.cache().set_value(f"session_token_{session_token}", matched_customer, expires_in_sec=3600)
 
     return {"status": "verified", "token": session_token, "customer_name": matched_customer}
 
@@ -407,7 +551,7 @@ def check_token_validity(token):
 
 @frappe.whitelist(allow_guest=True)
 def log_customer_login(customer_name):
-    print(f"Logging login for customer: {customer_name}")
+
     doc = frappe.get_doc({
         "doctype": "Ristourne Dashboard Logging",
         "client": customer_name,
@@ -427,90 +571,490 @@ def log_customer_login(customer_name):
 
 @frappe.whitelist(allow_guest=True)
 def get_info_message(customer_name):
-    ORDER = [
-        "Osmoseur Domestique",
-        "Osmoseur Commercial",
-        "Osmoseur Industriel",
-        "Osmoseur Bi-osmose",
-        "Adoucisseur",
-        "Porte filtre",
-        "Pompe",
-        "Membrane",
-        "Cartouche",
-        "Accessoire",
-        "Adaptateur",
-        "Citerne",
-        "Robinet",
-        "Mitigeur",
-        "Stérilisateur",
-        "Équipement de mesure",
-        "Divers",
-    ]
-    EXCLUDE = {"Livraison", "Echange", "Échange", "Main d'oeuvre", "Main d’œuvre"}
-
-    # 1) Price Lists (VENTE)
-    lists_des_prix = frappe.get_all(
-        "Price List",
-        filters={"selling": 1, "enabled": 1},
-        pluck="name",
-        order_by="name asc",
-    )
-    if not lists_des_prix:
-        frappe.throw("Aucune liste de prix de VENTE (selling=1, enabled=1) trouvée.")
-
-    # 2) Item Groups feuilles (hors exclusions)
-    all_groups = frappe.get_all("Item Group", filters={"is_group": 0}, pluck="name")
-    filtered_groups = [g for g in all_groups if g not in EXCLUDE]
-
-    in_order = [g for g in ORDER if g in filtered_groups]
-    others = sorted([g for g in filtered_groups if g not in ORDER])
-    article_groups = in_order + others
-
+    
     customer = frappe.get_doc("Customer", customer_name)
-    current_date = getdate(today())
-    mois_annee = formatdate(current_date, "MMMM yyyy")
+    mois_annee = formatdate(today(), "MMMM yyyy")
+    customer_price_list = customer.default_price_list or "Standard Selling"
 
-    links_html = f"""
-    <table style='width: 100%; border-collapse: collapse; margin: 20px 0;'>
-        <tr>
-            <td colspan='4' style='padding: 10px; background-color: #f2f2f2; font-weight: bold; text-align: center; border: 1px solid #ddd;'>
-                Voici les derniers liens vers vos listes des prix {customer.customer_group} générées ({mois_annee})
-            </td>
-        </tr>
+    # ------------------------------------------------
+    # 1) ORDRE PRINCIPAL (1er niveau)
+    # ------------------------------------------------
+    ORDER = [
+        "Osmoseurs Inverses RO",
+        "Membranes RO",
+        "Pompes & Accessoires",
+        "Équipements & Instruments",
+        "Adoucisseurs",
+        "Équipements de Filtration & Vannes",
+        "Produits Chimiques",
+        "Réservoirs, Tuyauterie & Robinetterie",
+    ]
+
+    # ------------------------------------------------
+    # 2) ORDRE HIÉRARCHIQUE (enfants)
+    # ------------------------------------------------
+    order = {
+        "Adoucisseurs": [
+            "Adoucisseurs Domestiques",
+            "Adoucisseurs Commerciaux",
+            "Bacs à sels",
+            "Consommables & Accessoires",
+            "Vannes de commande"
+        ],
+        "Vannes de commande": [
+            "Vannes adoucisseurs manuelles",
+            "Vannes adoucisseurs automatiques"
+        ],
+        "Équipements & Instruments": [
+            "Armoires & composants électriques",
+            "Contrôleurs",
+            "Instruments de mesure",
+            "Tests d’analyse"
+        ],
+        "Armoires & composants électriques": [
+            "Armoires de commande",
+            "Accessoires électriques"
+        ],
+        "Équipements de Filtration & Vannes": [
+            "Porte-filtres",
+            "Bouteilles FRP",
+            "Stérilisateurs UV",
+            "Cartouches filtrantes",
+            "Médias filtrants",
+            "Électrovannes",
+            "Vannes multi-voies"
+        ],
+        "Stérilisateurs UV": [
+            "Filtres UV",
+            "Accessoires UV"
+        ],
+        "Vannes multi-voies": [
+            "Vannes à pointeau",
+            "Vannes manuelles",
+            "Vannes automatiques"
+        ],
+        "Membranes RO": [
+            "Membranes RO domestiques (≤100 GPD)",
+            "Membranes RO commerciales (≤800 GPD)",
+            "Membranes RO industrielles (4040/8040)",
+            "Porte-membranes RO"
+        ],
+        "Cartouches filtrantes": [
+            "Cartouches anti-sédiment",
+            "Cartouches lavables",
+            "Cartouches anti-calcaire",
+            "Filtres T33",
+            "Cartouches à charbon",
+            "Cartouches plissées (anti-bactériennes inf 1 micron)"
+        ],
+        "Osmoseurs Inverses RO": [
+            "Osmoseurs Domestiques",
+            "Osmoseurs Commerciaux",
+            "Osmoseurs Industriels",
+            "Bi-osmose",
+            "Fontaines",
+            "Accessoires Osmoseurs"
+        ],
+        "Osmoseurs Domestiques": [
+            "RO domestique sans pompe",
+            "RO domestique avec pompe",
+            "RO flux direct",
+            "RO Consommables & Kits d’entretien"
+        ],
+        "Accessoires Osmoseurs": [
+            "Coudes",
+            "Connecteurs droits",
+            "Connecteurs T",
+            "Connecteurs Y",
+            "Clips & colliers",
+            "Clés de serrage",
+            "Électrovannes & automatismes",
+            "Raccords spéciaux",
+            "Vannes & régulation",
+            "Accessoires divers"
+        ],
+        "Pompes & Accessoires": [
+            "Adaptateurs pour booster osmoseurs",
+            "Pompes booster pour osmoseurs",
+            "Pompes de surface & puits",
+            "Pompes multicellulaires",
+            "Pompes volumétriques",
+            "Pompes doseuses",
+            "Accessoires de pompes"
+        ],
+        "Pompes de surface & puits": [
+            "Pompes périphériques",
+            "Pompes auto-amorçantes",
+            "Pompes inox"
+        ],
+        "Produits Chimiques": [
+            "Antiscalants",
+            "Acides & Bases",
+            "Produits Désinfectants"
+        ],
+        "Réservoirs, Tuyauterie & Robinetterie": [
+            "Citernes & Réservoirs",
+            "Robinetterie",
+            "Tuyauterie"
+        ],
+        "Citernes & Réservoirs": [
+            "Réservoirs pressurisés horizontaux",
+            "Réservoirs pressurisés verticaux",
+            "Citernes alimentaires"
+        ],
+        "Robinetterie": [
+            "Robinets",
+            "Mitigeurs"
+        ]
+    }
+
+    EXCLUDED_PARENT = "Services & Interventions"
+
+    # ------------------------------------------------
+    # 3) GROUPES EXCLUS
+    # ------------------------------------------------
+    excluded_children = frappe.get_all(
+        "Item Group",
+        filters={"parent_item_group": EXCLUDED_PARENT},
+        pluck="name",
+    )
+    excluded_groups = {EXCLUDED_PARENT} | set(excluded_children)
+
+    # ------------------------------------------------
+    # 4) RACINE & GROUPES PARENTS
+    # ------------------------------------------------
+    root_group = frappe.db.get_value(
+        "Item Group", {"parent_item_group": ""}, "name"
+    )
+
+    parent_groups = frappe.get_all(
+        "Item Group",
+        filters={"parent_item_group": root_group, "is_group": 1},
+        fields=["name", "item_group_name"],
+    )
+
+    def parent_sort_key(g):
+        try:
+            return ORDER.index(g["item_group_name"])
+        except ValueError:
+            return 999
+
+    parent_groups = sorted(parent_groups, key=parent_sort_key)
+
+    # ------------------------------------------------
+    # 5) ICÔNE PDF
+    # ------------------------------------------------
+    PDF_ICON = """
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="26" height="26">
+    <path d="M7 3h13l6 6v20H7z" fill="#ffffff" stroke="#000000" stroke-width="1.4" />
+    <polygon points="20,3 26,9 20,9" fill="#000000" />
+    <rect x="7" y="15" width="19" height="10" fill="#e53935" />
+    <text x="16.5" y="22"
+            text-anchor="middle"
+            font-family="Arial, Helvetica, sans-serif"
+            font-size="8"
+            font-weight="bold"
+            fill="#ffffff">
+        PDF
+    </text>
+    </svg>
     """
 
-    column_count = 4
-    current_col = 0
-    links_html += "<tr>"
-    customer_list_prix = customer.default_price_list or "Vente standard"
+    # ------------------------------------------------
+    # 6) PDF POUR UN GROUPE  (URL SANITISÉE)
+    # ------------------------------------------------
+    def get_pdf_for_group(group_name, price_list=None):
+        """
+        Retourne l'URL du dernier PDF généré automatiquement pour un groupe donné.
+        On encode le nom du document pour éviter les problèmes avec &, espaces, etc.
+        """
+        if not group_name:
+            return "#"
 
-    for group in article_groups:
-        docname = frappe.db.sql("""
-            SELECT DISTINCT lpd.name
+        where_parts = [
+            "gad.goup_articles = %s",
+            "lpd.`génrer_automatique` = 1",
+        ]
+        params = [group_name]
+
+        if price_list:
+            where_parts.append("lpd.liste_des_prix = %s")
+            params.append(price_list)
+
+        sql = f"""
+            SELECT lpd.name
             FROM `tabListe prix documents` lpd
             JOIN `tabGroup articles doc` gad ON gad.parent = lpd.name
-            WHERE lpd.génrer_automatique = 1
-              AND lpd.liste_des_prix = %s
-              AND gad.goup_articles = %s
+            WHERE {" AND ".join(where_parts)}
             ORDER BY lpd.creation DESC
             LIMIT 1
-        """, (customer_list_prix, group), as_dict=True)
+        """
 
-        if docname:
-            docname = docname[0]["name"]
-            pdf_link = f"/printview?doctype=Liste%20prix%20documents&name={docname}"
-            links_html += f"<td style='padding: 8px; border: 1px solid #ddd; text-align: center;'><a href='{pdf_link}' target='_blank'>{group}</a></td>"
-            current_col += 1
-            if current_col == column_count:
-                links_html += "</tr><tr>"
-                current_col = 0
+        rows = frappe.db.sql(sql, tuple(params), as_dict=True)
+        if not rows:
+            return "#"
 
-    if current_col != 0:
-        for _ in range(column_count - current_col):
-            links_html += "<td style='padding: 8px; border: 1px solid #ddd;'></td>"
-        links_html += "</tr>"
+        docname = rows[0]["name"]
+        if not frappe.db.exists("Liste prix documents", docname):
+            return "#"
 
-    links_html += "</table>"
+        # ✅ encodage URL pour gérer les &, espaces, etc.
+        encoded_name = quote(docname, safe="")
+        return f"/printview?doctype=Liste%20prix%20documents&name={encoded_name}"
+
+    # ------------------------------------------------
+    # 7) RENDU RÉCURSIF DES ENFANTS
+    # ------------------------------------------------
+    def render_children(parent_name):
+        html = ""
+        children = frappe.get_all(
+            "Item Group",
+            filters={"parent_item_group": parent_name},
+            fields=["name", "item_group_name", "is_group"],
+        )
+
+        if not children:
+            return html
+
+        def child_sort_key(c):
+            ig_name = c["item_group_name"]
+            if parent_name in order and ig_name in order[parent_name]:
+                return (order[parent_name].index(ig_name), ig_name)
+            return (999, ig_name)
+
+        children = sorted(children, key=child_sort_key)
+
+        for c in children:
+            if c.name in excluded_groups:
+                continue
+
+            pdf = get_pdf_for_group(c.name, customer_price_list)
+
+            if c.is_group:
+                html += f"""
+                <details class="child-block">
+                    <summary>
+                        <div class="group-main">
+                            <span class="toggle-icon">▸</span>
+                            <div class="group-text">
+                                <span class="child-label">{c.item_group_name}</span>
+                            </div>
+                        </div>
+                        <a href="{pdf}" target="_blank" class="pdf-btn" title="Ouvrir le PDF">
+                            {PDF_ICON}
+                        </a>
+                    </summary>
+                    <div class="child-container">
+                        {render_children(c.name)}
+                    </div>
+                </details>
+                """
+            else:
+                html += f"""
+                <div class="leaf-row">
+                    <span>{c.item_group_name}</span>
+                    <a href="{pdf}" target="_blank" class="pdf-btn" title="Ouvrir le PDF">
+                        {PDF_ICON}
+                    </a>
+                </div>
+                """
+
+        return html
+
+    # ------------------------------------------------
+    # 8) HTML + CSS (avec hover rouge)
+    # ------------------------------------------------
+    links_html = """
+    <style>
+    .price-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+    }
+
+    /* En-têtes de groupe / enfants */
+    .group-header, .child-block > summary {
+        padding: 10px 12px;
+        background: #e8f4ff;
+        border: 1px solid #ccd;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+        list-style: none;
+        font-size: 14px;
+    }
+
+    .group-header::-webkit-details-marker,
+    .child-block > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .group-main {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .group-text {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+    }
+
+    .toggle-icon {
+        font-size: 12px;
+        color: #555;
+        margin-top: 2px;
+        transition: transform 0.2s ease;
+    }
+    details[open] > summary .toggle-icon {
+        transform: rotate(90deg);
+    }
+
+    .group-label, .child-label {
+        font-weight: 600;
+        word-wrap: break-word;
+    }
+    .group-hint {
+        font-size: 11px;
+        color: #666;
+        margin-top: 2px;
+    }
+
+    .group-block {
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        padding: 0;
+        margin-bottom: 10px;
+    }
+
+    .child-container {
+        padding: 6px 12px 10px 12px;
+        border-top: 1px solid #ccd;
+    }
+
+    .child-block {
+        margin-top: 6px;
+        border-radius: 4px;
+        border: 1px solid #eee;
+    }
+
+    .leaf-row {
+        padding: 5px 0;
+        display: flex;
+        justify-content: space-between;
+        border-bottom: 1px dotted #eee;
+        font-size: 12px;
+    }
+
+    /* Bouton PDF + effet hover rouge fort */
+    .pdf-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        background: transparent;
+        text-decoration: none;
+    }
+    .pdf-btn svg {
+        width: 24px;
+        height: 24px;
+        transition: transform 0.15s ease, filter 0.15s ease;
+    }
+
+    /* 🔥 survol : rouge plus foncé + glow */
+    .pdf-btn:hover svg rect {
+        fill: #b71c1c;
+    }
+    .pdf-btn:hover svg path {
+        stroke: #b71c1c;
+    }
+    .pdf-btn:hover svg {
+        filter: drop-shadow(0 0 3px rgba(183, 28, 28, 0.9));
+        transform: scale(1.05);
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .price-table tr,
+        .price-table td {
+            display: block;
+            width: 100% !important;
+        }
+        .price-table td {
+            border-left: 0 !important;
+            border-right: 0 !important;
+            margin-bottom: 12px;
+        }
+    }
+    </style>
+    """
+
+    links_html += f"""
+    <table class="price-table">
+    <tr>
+        <td colspan="4"
+            style="padding: 10px; background-color: #f2f2f2; text-align: center;
+                font-weight: bold; border: 1px solid #ddd;">
+            Voici les derniers liens vers vos listes des prix {customer.customer_group}
+            générées ({mois_annee})
+        </td>
+    </tr>
+    <tr>
+    """
+
+    col = 0
+    for p in parent_groups:
+        if p.name in excluded_groups:
+            continue
+
+        pdf_parent = get_pdf_for_group(p.name, customer_price_list)
+
+        links_html += f"""
+        <td style="padding:10px; border:1px solid #ddd; vertical-align:top; width:25%;">
+            <details class="group-block">
+                <summary class="group-header">
+                    <div class="group-main">
+                        <span class="toggle-icon">▸</span>
+                        <div class="group-text">
+                            <span class="group-label">{p.item_group_name}</span>
+                            <span class="group-hint">Voir les sous-catégories</span>
+                        </div>
+                    </div>
+                    <a href="{pdf_parent}" target="_blank" class="pdf-btn"
+                    title="Ouvrir le PDF principal">
+                        {PDF_ICON}
+                    </a>
+                </summary>
+                <div class="child-container">
+                    {render_children(p.name)}
+                </div>
+            </details>
+        </td>
+        """
+
+        col += 1
+        if col == 4:
+            links_html += "</tr><tr>"
+            col = 0
+
+    links_html += "</tr></table>"
+
+
+# ou: context.links_html = links_html
+
+# ou dans un context :
+# context.links_html = links_html
+
+# ou context.links_html = links_html
+
+# ou dans un contexte de template :
+# context.links_html = links_html
 
     ristourne = find_applicable_ristourne(customer_name)
     if not ristourne:

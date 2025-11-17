@@ -19,14 +19,172 @@
     table{width:100%;border-collapse:collapse;font-size:14px;margin-top:10px}
     th,td{padding:8px;border:1px solid #ddd;text-align:center}
     th{background:#f2f2f2}
+
+    /* Navigation pour les familles principales */
+    .group-nav-text{
+      margin:0 0 4px 0;
+      font-size:12px;
+    }
+    .group-nav{
+      margin-bottom:10px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      justify-content:center;
+    }
+    .group-btn{
+      padding:6px 10px;
+      border:1px solid #ccc;
+      border-radius:16px;
+      background:#f5f5f5;
+      cursor:pointer;
+      font-size:12px;
+    }
+    .group-btn.active{
+      background:#007bff;
+      color:#fff;
+      border-color:#007bff;
+    }
+
+    /* --- Tables scrollables sur mobile --- */
+    .table-wrapper{
+      width:100%;
+      overflow-x:auto;
+    }
+    header.header-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:10px;
+  text-align:left;
+}
+
+.banner{
+  width:42rem;          /* plus grand sur desktop */
+  height:auto;
+}
+
+.header-info{
+  flex:1;
+  font-size:13px;
+  line-height:1.5;
+}
+
+.header-info-row{
+  margin-bottom:4px;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+.header-info-row strong{
+  font-weight:bold;
+}
+
+.header-info a{
+  color:#007bff;
+  text-decoration:none;
+}
+
+.header-info a:hover{
+  text-decoration:underline;
+}
+
+.header-icon{
+  font-size:16px;
+  width:18px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.header-social{
+  margin-top:4px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.header-social a{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:4px 8px;
+  border-radius:14px;
+  background:#f5f5f5;
+  font-size:12px;
+}
+
+.header-social a:hover{
+  background:#e6f0ff;
+}
+
+/* Mobile header */
+@media (max-width: 600px){
+  header.header-top{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+  .banner{
+
+    max-width:100%;
+  }
+  .header-info{
+    font-size:12px;
+  }
+}
+
+    @media (max-width: 600px){
+      table{font-size:12px;}
+      th,td{padding:4px;}
+    }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <header>
-    <img src="/files/sigle entreprise_Tc6a573.png" alt="AquaWorld Banner" class="banner">
-  </header>
+<header class="header-top">
+  <img src="/files/Logo-AquaWorld-2.png" alt="AquaWorld Banner" class="banner">
+
+  <div class="header-info">
+    <div class="header-info-row">
+      <span class="header-icon">🌐</span>
+      <strong>Site :</strong>
+      <a href="https://aquaworldservicing.com" target="_blank">
+        aquaworldservicing.com
+      </a>
+    </div>
+      <div class="header-line">
+        <span class="icon icon-mail">✉️</span>
+        <strong>Email :</strong>&nbsp;
+        <a href="mailto:sales@aquaworldservicing.com">sales@aquaworldservicing.com</a>
+      </div>
+
+    <div class="header-info-row">
+        <a href="https://maps.app.goo.gl/JdvN8TbK35zuK7cNA"
+           target="_blank"
+           rel="noopener"
+           title="Google Maps"
+           style="display:inline-flex;width:26px;height:26px;border-radius:50%;align-items:center;justify-content:center;background:#e3f2fd;">
+          📍
+          
+        </a>
+      <strong>Lien Gmaps:</strong>
+      <span>22 rue du Park, La soukra 2036 Ariana, Tunisie</span>
+      <!-- change si tu veux mettre l’adresse complète -->
+    </div>
+
+
+    <div class="header-info-row">
+      <span class="header-icon">📞</span>
+      <strong>Tél :</strong>
+      <a href="tel:+21698511119">+216 98 511 119</a>
+      <!-- remplace par ton vrai numéro -->
+    </div>
+
+</header>
 
   <h2 id="page-title">Chargement...</h2>
   <div id="links-content"></div>
@@ -48,13 +206,19 @@
   </div>
 
   <div id="tab-groupes" class="tab-content">
-    <h3>Quantité par Groupe d'Articles</h3>
+    <h3 id="group-title">Quantité par Groupe d'Articles</h3>
+    <div id="group-navigation"></div>
     <canvas id="groupChart"></canvas>
     <div id="group_table"></div>
   </div>
 </div>
 
 <script>
+/* ---------- FLAG MOBILE (affichage uniquement) ---------- */
+const IS_MOBILE = window.matchMedia("(max-width: 600px)").matches;
+
+/* ---------- INIT / AUTH ---------- */
+
 document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
   const token = urlParams.get('token');
@@ -113,6 +277,8 @@ function showTab(tabId) {
   document.getElementById(tabId).classList.add('active');
 }
 
+/* ---------- INFO MESSAGE ---------- */
+
 function loadInfoMessage(customerName) {
   fetch(`/api/method/booking_ristourne.ristourne.get_info_message?customer_name=${encodeURIComponent(customerName)}`)
     .then(r => r.json())
@@ -132,6 +298,8 @@ function loadInfoMessage(customerName) {
       document.getElementById('info-content').innerHTML = '<p>Erreur lors du chargement des informations personnalisées.</p>';
     });
 }
+
+/* ---------- DASHBOARD (TOTAL VENTES / RISTOURNE) ---------- */
 
 function loadDashboard(token) {
   fetch(`/api/method/booking_ristourne.ristourne.generate_ristourne_report_with_token?token=${encodeURIComponent(token)}`)
@@ -158,19 +326,43 @@ function loadDashboard(token) {
         type: 'bar',
         data: {
           labels,
-          datasets: [{ label: 'Total des ventes livrées HT (TND)', data: values,
-            backgroundColor: labels.map(l => l==="TOTAL" ? 'rgba(255,159,64,.7)':'rgba(75,192,192,.7)')}]
+          datasets: [{
+            label: 'Total des ventes livrées HT (TND)',
+            data: values,
+            backgroundColor: labels.map(l => l==="TOTAL" ? 'rgba(255,159,64,.7)':'rgba(75,192,192,.7)')
+          }]
         },
-        options: { responsive:true, scales:{ y:{ beginAtZero:true } } }
+        options: {
+          responsive:true,
+          scales:{
+            y:{ beginAtZero:true },
+            x:{
+              ticks:{
+                maxRotation: IS_MOBILE ? 60 : 0,
+                minRotation: IS_MOBILE ? 45 : 0
+              }
+            }
+          },
+          plugins:{
+            legend:{
+              position: IS_MOBILE ? 'bottom' : 'top'
+            }
+          }
+        }
       });
 
-      if (r.has_ristourne && r.paliers.length > 0) {
+      // ---- TABLEAU DES PALIERS (restauré, rendu mobile friendly) ----
+      if (r.has_ristourne && r.paliers && r.paliers.length > 0) {
         let html = `
           <h3>Détails des Paliers</h3>
+          <div class="table-wrapper">
           <table>
             <tr>
-              <th>Min (TND)</th><th>Max (TND)</th><th>% Réduction</th>
-              <th>Montant HT Appliqué (TND)</th><th>Ristourne Appliquée (TND)</th>
+              <th>Min (TND)</th>
+              <th>Max (TND)</th>
+              <th>% Réduction</th>
+              <th>Montant HT Appliqué (TND)</th>
+              <th>Ristourne Appliquée (TND)</th>
             </tr>`;
         r.paliers.forEach(p => {
           html += `<tr>
@@ -182,17 +374,32 @@ function loadDashboard(token) {
           </tr>`;
         });
         html += `<tr style="font-weight:bold;background:#f0f0f0;">
-          <td colspan="3">TOTAL</td><td>${r.total_ht.toFixed(2)}</td><td>${r.ristourne.toFixed(2)}</td></tr></table>`;
+          <td colspan="3">TOTAL</td>
+          <td>${r.total_ht.toFixed(2)}</td>
+          <td>${r.ristourne.toFixed(2)}</td>
+        </tr>`;
+        html += `</table></div>`;
         document.getElementById('paliers_table').innerHTML = html;
       } else {
         document.getElementById('paliers_table').innerHTML =
           `<p style="color:#888;">Aucune ristourne configurée pour vous. Votre CA total est : <strong>${r.total_ht.toFixed(2)} TND</strong>.</p>`;
       }
 
+      // Après avoir chargé le résumé, charger les groupes
       fetchGroupQuantities(token);
     })
     .catch(err => alert('Erreur lors de la récupération des données : ' + err.message));
 }
+
+/* ---------- INTERACTIVE GROUP VIEW ---------- */
+
+// état global pour l'onglet "Quantité par Groupe"
+let groupData = null;
+let mainFamilies = [];
+let selectedFamily = null;
+
+// adapter si ton groupe racine a un autre nom
+const ROOT_ITEM_GROUP = "Tous les Groupes d'Articles";
 
 function fetchGroupQuantities(token) {
   fetch(`/api/method/booking_ristourne.ristourne.get_grouped_article_quantities_by_month_with_token?token=${encodeURIComponent(token)}`)
@@ -201,42 +408,151 @@ function fetchGroupQuantities(token) {
       const r = data.message;
       if (!r) { alert('Aucune donnée retournée pour les groupes.'); return; }
 
-      const months = r.months;
-      const groups = r.groups;
+      groupData = r;
 
-      const gctx = document.getElementById('groupChart').getContext('2d');
-      if (window.groupChartInstance) window.groupChartInstance.destroy();
+      // familles principales = enfants directs du groupe racine
+      mainFamilies = groupData.groups.filter(
+        g => g.parent_item_group === ROOT_ITEM_GROUP
+      );
 
-      const datasets = groups.map(g => ({
-        label: g.item_group,
-        data: g.quantities,
-        backgroundColor: randomColor()
-      }));
+      if (!mainFamilies.length) {
+        console.warn("Aucune famille principale trouvée pour", ROOT_ITEM_GROUP);
+        return;
+      }
 
-      window.groupChartInstance = new Chart(gctx, {
-        type: 'bar',
-        data: { labels: months, datasets },
-        options: {
-          responsive:true,
-          scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } },
-          plugins:{ legend:{ position:'top' } }
-        }
-      });
+      // par défaut : première famille
+      if (!selectedFamily) {
+        selectedFamily = mainFamilies[0].item_group;
+      }
 
-      let tableHtml = `<h3>Détails Quantité par Groupe</h3><table><tr><th>Groupe</th>${months.map(m=>`<th>${m}</th>`).join('')}</tr>`;
-      groups.forEach(g => {
-        tableHtml += `<tr><td>${g.item_group}</td>${g.quantities.map(q=>`<td>${q}</td>`).join('')}</tr>`;
-      });
-      tableHtml += '</table>';
-      document.getElementById('group_table').innerHTML = tableHtml;
+      renderGroupFamilyButtons();
+      renderGroupFamily();
     })
     .catch(err => alert('Erreur lors de la récupération des données groupes : ' + err.message));
 }
 
+// Affiche les boutons pour changer de famille
+function renderGroupFamilyButtons() {
+  const navContainer = document.getElementById('group-navigation');
+  navContainer.innerHTML = "";
+
+  const info = document.createElement('p');
+  info.className = "group-nav-text";
+  info.textContent = "Choisissez une famille pour voir le détail par sous-groupe :";
+  navContainer.appendChild(info);
+
+  const btnWrap = document.createElement('div');
+  btnWrap.className = "group-nav";
+
+  mainFamilies.forEach(f => {
+    const btn = document.createElement('button');
+    btn.textContent = f.item_group;
+    btn.className = "group-btn" + (f.item_group === selectedFamily ? " active" : "");
+    btn.addEventListener('click', () => {
+      selectedFamily = f.item_group;
+      renderGroupFamily();
+      renderGroupFamilyButtons();
+    });
+    btnWrap.appendChild(btn);
+  });
+
+  navContainer.appendChild(btnWrap);
+}
+
+// Affiche le graphique + tableau pour la famille sélectionnée
+function renderGroupFamily() {
+  if (!groupData || !selectedFamily) return;
+
+  const months = groupData.months;            // ex: ["2025-01", ..., "Moyenne"]
+  const chartMonths = months.slice(0, -1);    // on retire "Moyenne" pour le graphe
+  const groups = groupData.groups;
+
+  const family = groups.find(g => g.item_group === selectedFamily);
+  if (!family) {
+    console.warn("Famille sélectionnée introuvable:", selectedFamily);
+    return;
+  }
+
+  // sous-groupes = enfants directs de la famille sélectionnée
+  let children = groups.filter(
+    g => g.parent_item_group === selectedFamily
+  );
+
+  // si aucun enfant, on affiche simplement la famille elle-même
+  const groupsToShow = children.length ? children : [family];
+
+  // mettre à jour le titre
+  document.getElementById('group-title').textContent =
+    "Quantité par Groupe d'Articles – " + selectedFamily;
+
+  // ====== GRAPHIQUE ======
+  const gctx = document.getElementById('groupChart').getContext('2d');
+  if (window.groupChartInstance) window.groupChartInstance.destroy();
+
+  const datasets = groupsToShow.map(g => ({
+    label: g.item_group,
+    data: g.quantities.slice(0, -1),   // sans la moyenne pour le graphe
+    backgroundColor: randomColor()
+  }));
+
+  window.groupChartInstance = new Chart(gctx, {
+    type: 'bar',
+    data: {
+      labels: chartMonths,
+      datasets
+    },
+    options: {
+      responsive:true,
+      scales:{
+        x:{
+          stacked:true,
+          ticks:{
+            maxRotation: IS_MOBILE ? 60 : 0,
+            minRotation: IS_MOBILE ? 45 : 0
+          }
+        },
+        y:{ stacked:true, beginAtZero:true }
+      },
+      plugins:{
+        legend:{
+          position: IS_MOBILE ? 'bottom' : 'top'
+        }
+      }
+    }
+  });
+
+  // ====== TABLEAU ======
+  let html = `<h3>Détails Quantité – ${selectedFamily}</h3>`;
+  html += `<div class="table-wrapper"><table><tr><th>Groupe</th>${months.map(m=>`<th>${m}</th>`).join('')}</tr>`;
+
+  // si on a des sous-groupes, ajouter une ligne total pour la famille
+  if (children.length) {
+    html += `<tr style="font-weight:bold;background:#fafafa;">
+      <td>Total ${family.item_group}</td>
+      ${family.quantities.map(q=>`<td>${q}</td>`).join('')}
+    </tr>`;
+  }
+
+  groupsToShow.forEach(g => {
+    html += `<tr>
+      <td>${g.item_group}</td>
+      ${g.quantities.map(q=>`<td>${q}</td>`).join('')}
+    </tr>`;
+  });
+
+  html += '</table></div>';
+  document.getElementById('group_table').innerHTML = html;
+}
+
+/* ---------- UTILS ---------- */
+
 function randomColor(){
-  const r=Math.floor(Math.random()*200), g=Math.floor(Math.random()*200), b=Math.floor(Math.random()*200);
+  const r=Math.floor(Math.random()*200),
+        g=Math.floor(Math.random()*200),
+        b=Math.floor(Math.random()*200);
   return `rgba(${r},${g},${b},0.7)`;
 }
+
 </script>
 
 </body>

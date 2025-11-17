@@ -287,6 +287,12 @@ fixtures = [
             ["doc_type", "in", ["Customer", "Sales Order"]],
         ],
     },
+    {
+        "doctype": "DocType",
+        "filters": [
+            ["module", "=", "Booking Ristourne"],
+        ],
+    },
 ]
 scheduler_events = {
     "cron": {
