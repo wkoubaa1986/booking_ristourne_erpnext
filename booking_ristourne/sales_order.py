@@ -234,7 +234,7 @@ def _has_submitted_used(so_name: str) -> Optional[str]:
 # ===========================================
 # === PUBLIC: disponibilité + HTML côté SO ===
 # ===========================================
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_available_for_sales_order(
     customer: str,
     transaction_date: Optional[str] = None,

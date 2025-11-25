@@ -113,7 +113,7 @@ def calculate_cumulative_ristourne(total_ht, paliers):
 
     return ristourne_total, palier_results
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def generate_ristourne_report_with_token(token):
     customer = frappe.cache().get_value(f"session_token_{token}")
     if not customer:
@@ -171,7 +171,7 @@ def generate_ristourne_report(customer):
         "has_ristourne": True
     }
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def get_grouped_article_quantities_by_month_with_token(token):
     customer = frappe.cache().get_value(f"session_token_{token}")
     if not customer:
@@ -1293,7 +1293,7 @@ def _parse_phones(raw: str | None) -> list[str]:
             seen.add(s)
             out.append(s)
     return out
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=True)
 def _customer_phones(customer_name: str) -> list[str]:
     row = frappe.db.get_value("Customer", customer_name, ["custom_liste_telephone"], as_dict=True)
     return _parse_phones((row or {}).get("custom_liste_telephone"))
@@ -1326,8 +1326,35 @@ def _already_exists_active_for_year(for_year: int, customer: str) -> bool:
     return False
 
 # ---------- GENERATION : crée des *Ristourne Active* si amount_prev > 0 + envoi SMS ----------
+@frappe.whitelist(allow_guest=True)
+def download_price_list_pdf(name):
+    """
+    Télécharge le PDF d'un doc 'Liste prix documents' en tant qu'invité.
+    Utilisé par la fiche client Ristourne.
+    """
+    frappe.local.flags.ignore_csrf = True
 
-@frappe.whitelist()
+    if not name:
+        frappe.throw(_("Nom de document manquant."))
+
+    # Vérifier que le document existe
+    if not frappe.db.exists("Liste prix documents", name):
+        frappe.throw(_("Document introuvable ou inexistant."))
+
+    # Générer le PDF
+    pdf_data = frappe.get_print(
+        "Liste prix documents",
+        name,
+        print_format=None,      # ou ton format si tu en as un spécifique
+        as_pdf=True
+    )
+
+    # Réponse HTTP -> téléchargement direct
+    frappe.local.response.filename = f"{name}.pdf"
+    frappe.local.response.filecontent = pdf_data
+    frappe.local.response.type = "download"
+    
+@frappe.whitelist(allow_guest=True)
 def generate_active_ristournes_from_previous(
     year: int | None = None,
     scope: str = "customer",
