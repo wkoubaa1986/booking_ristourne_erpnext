@@ -551,13 +551,14 @@ def check_token_validity(token):
 
 @frappe.whitelist(allow_guest=True)
 def log_customer_login(customer_name):
-
+    print(f"[Login Log] customer={customer_name}")
     doc = frappe.get_doc({
         "doctype": "Ristourne Dashboard Logging",
         "client": customer_name,
         "logging_time": now()
     })
-    doc.insert()
+    doc.flags.ignore_permissions = True
+    doc.insert(ignore_permissions=True)
     doc.submit()
     frappe.db.commit()
     return {
