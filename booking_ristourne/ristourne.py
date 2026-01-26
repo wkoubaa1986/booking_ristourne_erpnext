@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import getdate, add_months, today, now, formatdate
+from frappe.utils import getdate, add_months, today, now, formatdate, nowdate, flt
 import random
 import re
 import hmac
@@ -10,6 +10,8 @@ from frappe.core.doctype.sms_settings.sms_settings import send_sms as frappe_sen
 from urllib.parse import quote 
 from functools import lru_cache
 from frappe import _
+import datetime
+
 
 # =========================
 # === RISTOURNE LOGIQUE ===
@@ -1084,7 +1086,90 @@ def get_info_message(customer_name):
     current_year = int(today()[:4])
     annee_N = current_year
     annee_N_plus_1 = current_year + 1
+    annee_N_1 = current_year-1
     ristourne_annuelle = 3000  # Placeholder
+    status=get_customer_ristourne_status(customer_name)
+    today_str = frappe.utils.formatdate(frappe.utils.nowdate(), "dd/MM/yyyy")
+
+    # --- block 1: open collapsible (if active) ---
+    ristourne_block_open = ""
+    ristourne_block_used_rows = ""
+    if status.get("has_active"):
+        annual_amount = status.get("annual_amount", 0) or 0
+        available_to_date = status.get("available_to_date", 0) or 0
+        used_total = status.get("used_total", 0) or 0
+        used_rows = status.get("used_rows") or []
+
+        ristourne_block_open = f"""
+        <details open style="margin: 16px 0;">
+        <summary style="cursor:pointer; font-weight:700; font-size:16px;">
+            🎁 Votre ristourne active ({annee_N})
+        </summary>
+
+        <div style="margin-top:10px; background:#f7fbff; border:1px solid #cfe4ff; border-radius:8px; padding:12px;">
+            <p style="margin:0 0 8px 0;">
+            Votre ristourne active de l’année <strong>{annee_N}</strong> (cumulée sur l’année <strong>{annee_N_1}</strong>) est de :
+            <strong>{annual_amount:.3f} TND</strong>.
+            </p>
+
+            <ul style="margin:0; padding-left:18px;">
+            <li>Ristourne disponible jusqu’à aujourd’hui (<strong>{today_str}</strong>) :
+                <strong>{available_to_date:.3f} TND</strong></li>
+            <li>Ristourne utilisée jusqu’à <strong>{today_str}</strong> :
+                <strong>{used_total:.3f} TND</strong></li>
+            </ul>
+        </div>
+        </details>
+        """
+
+        # --- block 2: closed collapsible with used_rows table ---
+        if used_rows:
+            rows_html = ""
+            for r in used_rows:
+                so = r.get("sales_order") or "-"
+                dt = r.get("posting_date") or ""
+                amt = float(r.get("applied_amount") or 0)
+                rows_html += f"""
+                <tr>
+                    <td style="border:1px solid #ddd; padding:8px;">{dt}</td>
+                    <td style="border:1px solid #ddd; padding:8px;">{so}</td>
+                    <td style="border:1px solid #ddd; padding:8px; text-align:right;">{amt:.3f}</td>
+                </tr>
+                """
+
+            ristourne_block_used_rows = f"""
+            <details style="margin: 10px 0 0 0;">
+            <summary style="cursor:pointer; font-weight:700;">
+                📄 Détail des ristournes utilisées (ouvrir)
+            </summary>
+
+            <div style="margin-top:10px;">
+                <table style="border-collapse:collapse; width:100%; font-size:14px;">
+                <thead>
+                    <tr>
+                    <th style="border:1px solid #ddd; padding:8px; text-align:left;">Date</th>
+                    <th style="border:1px solid #ddd; padding:8px; text-align:left;">Commande</th>
+                    <th style="border:1px solid #ddd; padding:8px; text-align:right;">Montant (TND)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows_html}
+                </tbody>
+                </table>
+            </div>
+            </details>
+            """
+        else:
+            ristourne_block_used_rows = f"""
+            <details style="margin: 10px 0 0 0;">
+            <summary style="cursor:pointer; font-weight:700;">
+                📄 Détail des ristournes utilisées (ouvrir)
+            </summary>
+            <div style="margin-top:10px; color:#666;">
+                Aucune ristourne utilisée jusqu’à <strong>{today_str}</strong>.
+            </div>
+            </details>
+            """
 
     message = f"""
     <h3>Bonjour {customer.customer_name} 👋</h3>
@@ -1092,6 +1177,8 @@ def get_info_message(customer_name):
         Un immense merci pour votre fidélité ! Vous faites partie de nos clients privilégiés en tant que 
         <strong>{customer.customer_group}</strong>, et nous sommes heureux de vous accompagner chaque jour dans vos projets et votre croissance.
     </p>
+    {ristourne_block_open}
+    {ristourne_block_used_rows}
 
     <p>
         Pour continuer à bénéficier de vos avantages tarifaires exclusifs, il vous suffit de maintenir un chiffre d’affaires annuel HT minimum de 
@@ -1480,3 +1567,123 @@ def generate_active_ristournes_from_previous(
     }
 
 
+
+
+def _month_index(d: datetime.date) -> int:
+    return d.year * 12 + d.month
+
+def _months_inclusive(d1: datetime.date, d2: datetime.date) -> int:
+    """Nombre de mois inclusifs entre d1 et d2 (Jan→Jan = 1, Jan→Feb = 2)."""
+    if not d1 or not d2 or d2 < d1:
+        return 0
+    return _month_index(d2) - _month_index(d1) + 1
+
+@frappe.whitelist()
+def get_customer_ristourne_status(customer: str) -> dict:
+    """
+    Retourne la ristourne active, utilisée, et disponible à ce jour.
+    Disponible = (annual_amount/12 * nb_mois_de_janvier_à_aujourd'hui) - somme(applied_amount)
+    """
+
+    if not customer:
+        return {"ok": False, "message": "customer is required"}
+
+    today = getdate(nowdate())
+    year = today.year
+    jan1 = datetime.date(year, 1, 1)
+    dec31 = datetime.date(year, 12, 31)
+
+    # -------------------------
+    # 1) Ristourne Active (valide aujourd'hui)
+    # -------------------------
+    active_filters = {
+        "customer": customer,
+        "docstatus": 1,
+        "valid_from": ["<=", today],
+        "valid_to": [">=", today],
+    }
+
+
+    active_rows = frappe.get_all(
+        "Ristourne Active",
+        filters=active_filters,
+        fields=["name", "annual_amount", "valid_from", "valid_to"],
+        order_by="valid_from desc",
+        limit_page_length=1,
+    )
+
+    if not active_rows:
+        return {
+            "ok": True,
+            "customer": customer,
+            "year": year,
+            "has_active": False,
+            "message": "No active ristourne found for today.",
+            "annual_amount": 0.0,
+            "months_elapsed": 0,
+            "accrued_to_date": 0.0,
+            "used_total": 0.0,
+            "available_to_date": 0.0,
+            "used_rows": [],
+        }
+
+    active = active_rows[0]
+    annual_amount = flt(active.get("annual_amount") or 0)
+
+    # Période prise en compte (jan1..today) MAIS bornée par valid_from/valid_to
+    vf = getdate(active.get("valid_from")) if active.get("valid_from") else jan1
+    vt = getdate(active.get("valid_to")) if active.get("valid_to") else dec31
+
+    period_start = max(jan1, vf)
+    period_end = min(today, vt)
+
+    months_elapsed = _months_inclusive(period_start, period_end)
+    accrued_to_date = (annual_amount / 12.0) * months_elapsed
+
+    # -------------------------
+    # 2) Ristourne Used (somme sur la période)
+    # -------------------------
+    used_filters = {
+        "customer": customer,
+        "docstatus": 1,
+        "posting_date": ["between", [period_start, period_end]],
+    }
+
+
+    used_rows = frappe.get_all(
+        "Ristourne used",
+        filters=used_filters,
+        fields=["name", "sales_order", "posting_date", "applied_amount"],
+        order_by="posting_date asc",
+        limit_page_length=1000,
+    )
+
+    used_total = 0.0
+    for r in used_rows:
+        
+        used_total += flt(r.get("applied_amount") or 0)
+        r["applied_amount"] = flt(["applied_amount"], 3)
+
+    available_to_date = accrued_to_date - used_total
+    annual_amount     = flt(annual_amount, 3)
+    accrued_to_date   = flt(accrued_to_date, 3)
+    used_total        = flt(used_total, 3)
+    available_to_date = flt(available_to_date, 3)
+
+    return {
+        "ok": True,
+        "customer": customer,
+        "year": year,
+        "has_active": True,
+        "active_doc": active.get("name"),
+        "annual_amount": annual_amount,
+        "valid_from": str(vf),
+        "valid_to": str(vt),
+        "period_start": str(period_start),
+        "period_end": str(period_end),
+        "months_elapsed": months_elapsed,
+        "accrued_to_date": accrued_to_date,
+        "used_total": used_total,
+        "available_to_date": available_to_date,
+        "used_rows": used_rows,
+    }

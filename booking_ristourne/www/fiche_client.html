@@ -300,7 +300,8 @@ function loadInfoMessage(customerName) {
 }
 
 /* ---------- DASHBOARD (TOTAL VENTES / RISTOURNE) ---------- */
-
+const N = new Date().getFullYear();
+const N1 = N + 1;
 function loadDashboard(token) {
   fetch(`/api/method/booking_ristourne.ristourne.generate_ristourne_report_with_token?token=${encodeURIComponent(token)}`)
     .then(r => r.json())
@@ -310,7 +311,7 @@ function loadDashboard(token) {
 
       if (r.has_ristourne) {
         document.getElementById('summary').innerHTML =
-          `<h3>Total HT : ${r.total_ht.toFixed(2)} TND | Ristourne Calculée : ${r.ristourne.toFixed(2)} TND</h3>`;
+          `<h3>Total HT ${N} : ${r.total_ht.toFixed(2)} TND | Ristourne Calculée ${N} (utilisable ${N1}) : ${r.ristourne.toFixed(2)} TND</h3>`;
       } else {
         document.getElementById('summary').innerHTML =
           `<h3>Total HT : ${r.total_ht.toFixed(2)} TND</h3><p style="color:#888;">Aucune ristourne définie pour vous actuellement.</p>`;
