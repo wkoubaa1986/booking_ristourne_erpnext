@@ -135,12 +135,11 @@ def _create_catalogue_user():
         "new_password": CATALOGUE_PASSWORD,
         "language": "fr",
         "roles": [
-            {"role": "System User"},
             {"role": "Sales User"},
             {"role": POS_MANAGER_ROLE},
         ],
     })
-    user.insert(ignore_permissions=True)
+    user.insert(ignore_permissions=True, ignore_links=True)
     user.reload()
 
     from frappe.utils.password import update_password
@@ -153,7 +152,7 @@ def _ensure_user_roles():
     """Assure que l'utilisateur a les bons rôles même s'il existait déjà."""
     user = frappe.get_doc("User", CATALOGUE_USER)
     existing_roles = {r.role for r in user.roles}
-    needed = {"System User", "Sales User", POS_MANAGER_ROLE}
+    needed = {"Sales User", POS_MANAGER_ROLE}
     for role in needed - existing_roles:
         user.append("roles", {"role": role})
         print(f"  ADDED role '{role}' to '{CATALOGUE_USER}'")
