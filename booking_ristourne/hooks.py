@@ -241,20 +241,21 @@ app_license = "mit"
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
+
+after_migrate = ["booking_ristourne.pos_setup.sync_pos_profiles"]
+
 fixtures = [
     # ---- Scripts ----
     {
         "doctype": "Server Script",
         "filters": [
             ["module", "=", "Booking Ristourne"],
-            # facultatif: ["enabled", "=", 1],
         ],
     },
     {
         "doctype": "Client Script",
         "filters": [
             ["module", "=", "Booking Ristourne"],
-            # facultatif: ["enabled", "=", 1],
         ],
     },
 
@@ -274,13 +275,13 @@ fixtures = [
         "filters": [
             ["dt", "in", ["Customer", "Sales Order"]],
             ["fieldname", "in", [
-                "custom_autoriser_acces_fiche_client",   # Customer (checkbox par défaut)
-                "custom_ristourne_disponible",           # Sales Order
-                "custom_appliquer_ristourne",            # Sales Order
+                "custom_autoriser_acces_fiche_client",
+                "custom_fiche_client_token",
+                "custom_ristourne_disponible",
+                "custom_appliquer_ristourne",
             ]],
         ],
     },
-    # si tu as mis un Default=1 sur le checkbox via Property Setter :
     {
         "doctype": "Property Setter",
         "filters": [
@@ -291,6 +292,20 @@ fixtures = [
         "doctype": "DocType",
         "filters": [
             ["module", "=", "Booking Ristourne"],
+        ],
+    },
+    {
+        "doctype": "DocType",
+        "filters": [
+            ["name", "=", "Tache de travail"],
+        ],
+    },
+
+    # ---- Permissions POS Manager (catalogue.pos) ----
+    {
+        "doctype": "Custom DocPerm",
+        "filters": [
+            ["role", "=", "POS Manager"],
         ],
     },
 ]

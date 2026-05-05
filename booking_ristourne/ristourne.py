@@ -577,6 +577,154 @@ def check_token_validity(token):
     else:
         return {"status": "expired"}
 
+
+DEFAULT_POS_PROFILE = "POS - Vente standard"
+
+@frappe.whitelist(allow_guest=True)
+def get_pos_profile_for_customer(customer_name):
+    """
+    Retourne le nom du POS Profile correspondant à la liste de prix du client.
+    Cherche dans Customer.default_price_list puis Customer Group.default_price_list.
+    Fallback : POS - Vente standard si aucun profil trouvé.
+    """
+    try:
+        # 1. Prix par défaut du client
+        price_list = frappe.db.get_value("Customer", customer_name, "default_price_list")
+
+        # 2. Fallback : liste de prix du groupe client
+        if not price_list:
+            group = frappe.db.get_value("Customer", customer_name, "customer_group")
+            if group:
+                price_list = frappe.db.get_value("Customer Group", group, "default_price_list")
+
+        if price_list:
+            profile_name = f"POS - {price_list}"
+            if frappe.db.exists("POS Profile", profile_name):
+                return {"pos_profile": profile_name}
+
+        # Fallback : POS - Vente standard
+        if frappe.db.exists("POS Profile", DEFAULT_POS_PROFILE):
+            return {"pos_profile": DEFAULT_POS_PROFILE}
+
+        return {"pos_profile": None}
+    except Exception:
+        return {"pos_profile": None}
+
+@frappe.whitelist(allow_guest=True)
+def ensure_pos_opening_entry(pos_profile):
+    """
+    S'assure qu'il existe une POS Opening Entry ouverte pour le profil demandé.
+    Toutes les opérations DB se font en tant qu'Administrator (ignore_permissions).
+    """
+    user = frappe.session.user
+    if user == "Guest":
+        frappe.throw("Non autorisé", frappe.AuthenticationError)
+
+    # Tout faire en tant qu'Administrator pour bypasser les permissions du catalogue user
+    frappe.set_user("Administrator")
+    try:
+        # Chercher une entrée ouverte existante pour ce profil et cet utilisateur
+        existing = frappe.db.get_all(
+            "POS Opening Entry",
+            filters={
+                "user": user,
+                "pos_profile": pos_profile,
+                "pos_closing_entry": ["in", ["", None]],
+                "docstatus": 1,
+            },
+            fields=["name"],
+            order_by="period_start_date desc",
+            limit=1,
+            ignore_ifnull=True,
+        )
+        if existing:
+            return {"entry": existing[0].name, "created": False}
+
+        # Créer une nouvelle entrée d'ouverture pour le bon profil
+        profile_doc = frappe.get_doc("POS Profile", pos_profile)
+        company = profile_doc.company or frappe.db.get_single_value("Global Defaults", "default_company")
+        balance_details = [
+            {"mode_of_payment": pay.mode_of_payment, "opening_amount": 0}
+            for pay in profile_doc.payments
+        ]
+
+        new_entry = frappe.get_doc({
+            "doctype": "POS Opening Entry",
+            "period_start_date": frappe.utils.get_datetime(),
+            "posting_date": frappe.utils.getdate(),
+            "user": user,
+            "pos_profile": pos_profile,
+            "company": company,
+            "balance_details": balance_details,
+        })
+        new_entry.flags.ignore_permissions = True
+        new_entry.insert(ignore_permissions=True)
+        # Submit direct via DB pour bypasser check_permission("submit")
+        # Submit via DB et mettre status=Open (on_submit ne s'exécute pas via db.set_value seul)
+        frappe.db.set_value("POS Opening Entry", new_entry.name, {"docstatus": 1, "status": "Open"})
+        frappe.db.commit()
+        entry_name = new_entry.name
+    finally:
+        frappe.set_user(user)
+
+    return {"entry": entry_name, "created": True}
+
+
+@frappe.whitelist(allow_guest=True)
+def get_catalogue_sid(token):
+    """
+    Retourne un SID de session pour l'utilisateur catalogue POS.
+    Vérifie d'abord que le token client est valide via la DB Customer.
+    """
+    CATALOGUE_USER = "catalogue.pos@aquaworld.com"
+
+    # Valider le token via la DB (custom_fiche_client_token sur Customer)
+    customer_name = frappe.db.get_value(
+        "Customer",
+        {"custom_fiche_client_token": token},
+        "name"
+    )
+    if not customer_name:
+        # Fallback: vérifier via le cache Redis
+        customer_name = frappe.cache().get_value(f"session_token_{token}")
+    if not customer_name:
+        frappe.throw("Token invalide ou expiré", frappe.AuthenticationError)
+
+    # Supprimer les anciennes sessions pour forcer une session fraîche avec les bons rôles
+    frappe.db.delete("Sessions", {"user": CATALOGUE_USER})
+    frappe.db.commit()
+
+    # Créer une nouvelle session en se connectant en tant que catalogue user
+    frappe.local.login_manager = frappe.auth.LoginManager()
+    frappe.local.login_manager.user = CATALOGUE_USER
+    frappe.local.login_manager.post_login()
+
+    sid = frappe.local.session.get("sid")
+    # Générer et persister le CSRF token pour que les requêtes POST suivantes puissent l'utiliser
+    csrf_token = frappe.generate_hash()
+    frappe.local.session.data.csrf_token = csrf_token
+    # Sauvegarder en cache Redis (la session vient d'être créée, on force la persistence)
+    frappe.cache.hset("session", sid, frappe.local.session)
+    return {"sid": sid, "csrf_token": csrf_token}
+
+
+@frappe.whitelist()
+def get_user_pos_profile():
+    """Retourne le POS Profile assigné à l'utilisateur courant, ou 'Vente Nizar' par défaut."""
+    DEFAULT_POS_PROFILE = "Vente Nizar"
+    user = frappe.session.user
+    if not user or user == "Guest":
+        return DEFAULT_POS_PROFILE
+    profile = frappe.db.get_value("POS Profile User", {"user": user}, "parent")
+    if profile:
+        return profile
+    if frappe.db.exists("POS Profile", DEFAULT_POS_PROFILE):
+        return DEFAULT_POS_PROFILE
+    # Dernier recours : premier profil disponible
+    first = frappe.db.get_value("POS Profile", {}, "name")
+    return first or DEFAULT_POS_PROFILE
+
+
 @frappe.whitelist(allow_guest=True)
 def log_customer_login(customer_name):
     print(f"[Login Log] customer={customer_name}")
@@ -603,7 +751,11 @@ def get_info_message(customer_name):
     
     customer = frappe.get_doc("Customer", customer_name)
     mois_annee = formatdate(today(), "MMMM yyyy")
-    customer_price_list = customer.default_price_list or "Standard Selling"
+    customer_price_list = customer.default_price_list
+    if not customer_price_list and customer.customer_group:
+        customer_price_list = frappe.db.get_value("Customer Group", customer.customer_group, "default_price_list")
+    if not customer_price_list:
+        customer_price_list = "Vente standard"
 
     # ------------------------------------------------
     # 1) ORDRE PRINCIPAL (1er niveau)

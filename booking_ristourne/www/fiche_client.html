@@ -140,6 +140,45 @@
       table{font-size:12px;}
       th,td{padding:4px;}
     }
+
+    /* Bouton POS */
+    .pos-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 20px;
+      background: #e5e7eb;
+      color: #374151;
+      border: 1.5px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      transition: background .15s;
+    }
+    .pos-btn:hover { background: #d1d5db; color: #111827; }
+    .pos-btn.pos-btn-close {
+      background: #fee2e2;
+      color: #991b1b;
+      border-color: #fca5a5;
+    }
+    .pos-btn.pos-btn-close:hover { background: #fca5a5; color: #7f1d1d; }
+    #pos-btn-container { margin: 10px 0 4px 0; text-align: center; }
+    #pos-iframe-container {
+      width: 100%; margin-top: 12px;
+      border-radius: 8px; overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+      display: none;
+    }
+    #pos-iframe-container iframe {
+      width: 100%; height: 85vh; border: none;
+    }
+    @media (max-width: 600px) {
+      .pos-btn { width: 100%; justify-content: center; }
+    }
   </style>
 </head>
 <body>
@@ -184,9 +223,12 @@
       <!-- remplace par ton vrai numéro -->
     </div>
 
+
 </header>
 
   <h2 id="page-title">Chargement...</h2>
+  <div id="pos-btn-container"></div>
+  <div id="pos-iframe-container"></div>
   <div id="links-content"></div>
 
   <div class="tabs">
@@ -246,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
           .catch(()=>{});
 
         loadDashboard(token);
+        loadPOSButton(customer, token);
 
         // ping régulier
         setInterval(() => {
@@ -297,6 +340,266 @@ function loadInfoMessage(customerName) {
     .catch(() => {
       document.getElementById('info-content').innerHTML = '<p>Erreur lors du chargement des informations personnalisées.</p>';
     });
+}
+
+/* ---------- BOUTON POS ---------- */
+
+function loadPOSButton(customerName, token) {
+  // Récupérer uniquement le profil POS au chargement (le SID sera récupéré au clic)
+  fetch(`/api/method/booking_ristourne.ristourne.get_pos_profile_for_customer?customer_name=${encodeURIComponent(customerName)}`)
+    .then(r => r.json())
+    .then(profileData => {
+      const profile = (profileData.message && profileData.message.pos_profile) || 'POS - Vente standard';
+      const btnContainer = document.getElementById('pos-btn-container');
+      if (!btnContainer) return;
+      const url = `/app/point-of-sale?pos_profile=${encodeURIComponent(profile)}`;
+      btnContainer.dataset.posUrl = url;
+      btnContainer.dataset.posCustomer = customerName;
+      btnContainer.dataset.posToken = token;
+      btnContainer.dataset.posProfile = profile;
+      btnContainer.innerHTML = `
+        <button onclick="togglePOS(this)" class="pos-btn">
+          🔍 Rechercher un article
+        </button>`;
+    }).catch(() => {});
+}
+
+function togglePOS(btn) {
+  const iframeContainer = document.getElementById('pos-iframe-container');
+  const btnContainer = document.getElementById('pos-btn-container');
+  const url = btnContainer.dataset.posUrl;
+  const customer = btnContainer.dataset.posCustomer;
+  const token = btnContainer.dataset.posToken;
+  const posProfile = decodeURIComponent(url.split('pos_profile=')[1] || '');
+
+  if (iframeContainer.style.display === 'block') {
+    iframeContainer.style.display = 'none';
+    iframeContainer.innerHTML = '';
+    btn.classList.remove('pos-btn-close');
+    btn.textContent = '🔍 Rechercher un article';
+    // Si la session catalogue.pos a été activée, la supprimer pour ne pas
+    // interférer avec les sessions ERPNext des autres utilisateurs
+    const userIdCookie = document.cookie.split(';').find(c => c.trim().startsWith('user_id='));
+    if (userIdCookie && decodeURIComponent(userIdCookie.split('=')[1]) === 'catalogue.pos@aquaworld.com') {
+      fetch('/api/method/frappe.auth.logout', { method: 'POST' }).catch(() => {});
+    }
+  } else {
+    localStorage.setItem('pos_customer', customer);
+    btn.disabled = true;
+    btn.textContent = '⏳ Chargement...';
+
+    // Vérifier d'abord si un utilisateur Frappe est déjà connecté (employé ERPNext)
+    // Si oui : ne pas appeler get_catalogue_sid pour ne pas écraser sa session
+    fetch('/api/method/frappe.auth.get_logged_user')
+      .then(r => r.json())
+      .then(userResp => {
+        const currentUser = (userResp && userResp.message) || 'Guest';
+        const isEmployee = currentUser !== 'Guest' && currentUser !== 'catalogue.pos@aquaworld.com';
+
+        if (isEmployee) {
+          // Utilisateur ERPNext connecté → utiliser sa propre session, pas de get_catalogue_sid
+          // ensure_pos_opening_entry avec le CSRF token standard Frappe
+          const csrfToken = frappe && frappe.csrf_token ? frappe.csrf_token : '';
+          const formData = new FormData();
+          formData.append('pos_profile', posProfile);
+          const ensureHeaders = {};
+          if (csrfToken) ensureHeaders['X-Frappe-CSRF-Token'] = csrfToken;
+          return fetch(
+            '/api/method/booking_ristourne.ristourne.ensure_pos_opening_entry',
+            { method: 'POST', headers: ensureHeaders, body: formData }
+          ).catch(() => {});
+        } else {
+          // Client public (Guest) ou catalogue.pos → obtenir un SID catalogue frais
+          return fetch(`/api/method/booking_ristourne.ristourne.get_catalogue_sid?token=${encodeURIComponent(token)}`)
+            .then(r => r.json())
+            .then(sidData => {
+              const csrfToken = (sidData.message && sidData.message.csrf_token) || '';
+              const formData = new FormData();
+              formData.append('pos_profile', posProfile);
+              const ensureHeaders = {};
+              if (csrfToken) ensureHeaders['X-Frappe-CSRF-Token'] = csrfToken;
+              return fetch(
+                '/api/method/booking_ristourne.ristourne.ensure_pos_opening_entry',
+                { method: 'POST', headers: ensureHeaders, body: formData }
+              ).catch(() => {});
+            });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        btn.disabled = false;
+
+        // Overlay gris "Chargement..." affiché pendant que l'iframe se charge
+        iframeContainer.innerHTML = `
+          <div id="pos-header-bar" style="
+            display:flex; align-items:center; background:#2d3748;
+            padding:8px 16px; border-radius:8px 8px 0 0; gap:10px;">
+            <span style="color:#a0aec0; font-size:12px;">Point de vente :</span>
+            <span style="color:#fff; font-weight:bold; font-size:14px;">${posProfile}</span>
+          </div>
+          <div id="pos-loader" style="
+            display:flex; align-items:center; justify-content:center;
+            min-height:420px; background:#f4f4f4; border-radius:0 0 8px 8px;
+            flex-direction:column; gap:14px;">
+            <div style="width:48px;height:48px;border:5px solid #ccc;border-top-color:#4c9be8;
+              border-radius:50%;animation:pos-spin 0.8s linear infinite;"></div>
+            <span style="color:#888;font-size:1rem;">Chargement du catalogue...</span>
+          </div>
+          <style>@keyframes pos-spin{to{transform:rotate(360deg)}}</style>`;
+        iframeContainer.style.display = 'block';
+        iframeContainer.scrollIntoView({behavior: 'smooth', block: 'start'});
+
+        const iframe = document.createElement('iframe');
+        iframe.id = 'pos-iframe';
+        iframe.allowFullscreen = true;
+        iframe.style.display = 'none'; // caché jusqu'au chargement complet
+
+        // CSS injecté dans l'iframe après chargement
+        const posCSS = `
+          header.navbar { display: none !important; }
+          body { padding-top: 0 !important; }
+          .item-qty-pill { display: none !important; }
+          .customer-section { display: none !important; }
+          .menu-btn-group { display: none !important; }
+          .page-head { display: none !important; }
+          .checkout-btn { display: none !important; }
+          .add-discount-wrapper { display: none !important; }
+          .uom-control { display: none !important; }
+          .conversion_factor-control { display: none !important; }
+          .actual_qty-control { display: none !important; }
+          .price_list_rate-control { display: none !important; }
+          .warehouse-control { display: none !important; }
+          .discount_percentage-control { display: none !important; }
+          .cart-totals-section > .net-total-container { display: flex !important; justify-content: space-between !important; }
+          .cart-totals-section > .taxes-container { display: flex !important; flex-direction: column !important; }
+        `;
+
+        // JS injecté dans l'iframe : champ "Remise" calculé vs prix "Vente standard"
+        const posJS = `(function() {
+          var PRICE_LIST = "Vente standard";
+          var _lastItemCode = null;
+
+          function ensureRemiseBlock() {
+            var rateCtrl = document.querySelector('.rate-control');
+            if (!rateCtrl) return null;
+            var block = document.getElementById('_custom_remise_block');
+            if (!block) {
+              block = document.createElement('div');
+              block.id = '_custom_remise_block';
+              block.style.cssText = 'margin-top:10px;padding:8px 14px;background:#f0fdf4;border-radius:8px;font-size:13px;color:#166534;font-weight:500;';
+              block.innerHTML = '<span>Remise : </span><span id="_custom_remise_val" style="font-weight:700;">...</span>';
+              rateCtrl.parentNode.insertBefore(block, rateCtrl.nextSibling);
+            }
+            return block;
+          }
+
+          function checkAndUpdate() {
+            var pos = window.cur_pos;
+            if (!pos || !pos.item_details) return;
+            var container = document.querySelector('.item-details-container');
+            if (!container) return;
+            // Check if visible
+            var style = window.getComputedStyle(container);
+            if (style.display === 'none' || style.visibility === 'hidden') {
+              _lastItemCode = null;
+              return;
+            }
+            var item_row = pos.item_details.item_row;
+            if (!item_row || !item_row.item_code) return;
+            var item_code = item_row.item_code;
+            var currentRate = parseFloat(item_row.rate) || parseFloat(item_row.price_list_rate) || 0;
+
+            var block = ensureRemiseBlock();
+            if (!block) return;
+            var valEl = document.getElementById('_custom_remise_val');
+
+            if (item_code === _lastItemCode) return;
+            _lastItemCode = item_code;
+            if (valEl) valEl.textContent = '...';
+
+            window.frappe.call({
+              method: "frappe.client.get_list",
+              args: {
+                doctype: "Item Price",
+                filters: [["item_code","=",item_code],["price_list","=",PRICE_LIST],["selling","=",1]],
+                fields: ["price_list_rate"],
+                limit: 1
+              },
+              freeze: false,
+              callback: function(r) {
+                var b = document.getElementById('_custom_remise_block');
+                var v = document.getElementById('_custom_remise_val');
+                if (!b || !v) return;
+                var rows = r && r.message;
+                if (!rows || !rows.length) {
+                  v.textContent = 'Non disponible';
+                  b.style.background = '#fef9c3'; b.style.color = '#92400e';
+                  return;
+                }
+                var stdPrice = parseFloat(rows[0].price_list_rate) || 0;
+                if (stdPrice <= 0) { v.textContent = 'Non disponible'; return; }
+                var pct = Math.max(0, (stdPrice - currentRate) / stdPrice * 100);
+                b.style.background = pct > 0 ? '#f0fdf4' : '#f1f5f9';
+                b.style.color = pct > 0 ? '#166534' : '#475569';
+                v.textContent = pct.toFixed(1) + "% (Prix vente standard : " + stdPrice.toFixed(3) + " \u062f.\u062a)";
+              }
+            });
+          }
+
+          // Override page_length pour afficher plus d'articles (200 au lieu de 40)
+          var _pageLengthPatched = false;
+          function patchPageLength() {
+            var pos = window.cur_pos;
+            if (!pos || !pos.item_selector || _pageLengthPatched) return;
+            var orig = pos.item_selector.get_items.bind(pos.item_selector);
+            pos.item_selector.get_items = function(opts) {
+              opts = opts || {};
+              if (!opts.page_length) opts.page_length = 200;
+              return orig(opts);
+            };
+            _pageLengthPatched = true;
+            // Recharger la liste avec le nouveau page_length
+            pos.item_selector.filter_items();
+          }
+
+          // Polling 400ms : Remise + force-show Total HT/TVA + page_length patch
+          setInterval(function() {
+            checkAndUpdate();
+            patchPageLength();
+            var netCont = document.querySelector('.net-total-container');
+            if (netCont) netCont.style.setProperty('display', 'flex', 'important');
+            var taxCont = document.querySelector('.taxes-container');
+            if (taxCont && taxCont.children.length > 0) taxCont.style.setProperty('display', 'flex', 'important');
+          }, 400);
+        })();`;
+
+        iframe.addEventListener('load', function() {
+          // Injecter le CSS de masquage
+          try {
+            const doc = this.contentDocument || this.contentWindow.document;
+            const win = this.contentWindow;
+            if (doc && doc.head) {
+              const style = doc.createElement('style');
+              style.textContent = posCSS;
+              doc.head.appendChild(style);
+              // Injecter le JS "Remise" après que le POS soit initialisé
+              const script = doc.createElement('script');
+              script.textContent = posJS;
+              doc.head.appendChild(script);
+            }
+          } catch(e) {}
+          // Remplacer le loader par l'iframe
+          const loader = document.getElementById('pos-loader');
+          if (loader) loader.remove();
+          this.style.display = 'block';
+        });
+
+        iframeContainer.appendChild(iframe);
+        iframe.src = url; // déclenche le chargement APRÈS avoir attaché le listener
+        btn.classList.add('pos-btn-close');
+        btn.textContent = '✕ Fermer le catalogue';
+      });
+  }
 }
 
 /* ---------- DASHBOARD (TOTAL VENTES / RISTOURNE) ---------- */
