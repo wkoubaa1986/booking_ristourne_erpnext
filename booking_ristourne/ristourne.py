@@ -423,12 +423,38 @@ def _sms_otp_enabled() -> bool:
         return False
 
 def _send_sms_via_settings(phone: str, message: str) -> bool:
-    """Envoie un SMS via le paramétrage 'SMS Settings' de Frappe."""
+    """Envoie un SMS via Frappe SMS Settings. Fallback urllib direct si erreur."""
+    # Tentative 1 : via couche Frappe
     try:
         frappe_send_sms([phone], message)
+        print(f"[SMS] Envoyé via Frappe SMS Settings → {phone}")
         return True
-    except Exception:
-        frappe.log_error(frappe.get_traceback(), "OTP SMS: échec d'envoi via SMS Settings")
+    except Exception as e1:
+        print(f"[SMS] Frappe send_sms échoué ({e1}), tentative fallback urllib...")
+
+    # Tentative 2 : appel direct WinSMSPro via urllib
+    try:
+        import urllib.request
+        import urllib.error
+        from urllib.parse import urlencode
+        ss = frappe.get_doc("SMS Settings", "SMS Settings")
+        params = {p.parameter: p.value for p in ss.get("parameters") if not p.header}
+        params[ss.receiver_parameter] = phone
+        params[ss.message_parameter] = message
+        url = ss.sms_gateway_url + "?" + urlencode(params)
+        try:
+            resp = urllib.request.urlopen(url, timeout=15)
+            body = resp.read().decode()
+            print(f"[SMS] Fallback urllib OK → {phone} (status {resp.status}) {body}")
+            return resp.status == 200
+        except urllib.error.HTTPError as http_err:
+            body = http_err.read().decode() if http_err else ""
+            print(f"[SMS] Fallback urllib HTTP {http_err.code} → {phone}: {body}")
+            frappe.log_error(f"phone={phone} status={http_err.code} body={body}", "OTP SMS: fallback HTTP error")
+            return False
+    except Exception as e2:
+        frappe.log_error(frappe.get_traceback(), "OTP SMS: échec fallback urllib WinSMSPro")
+        print(f"[SMS] Fallback urllib échoué ({e2})")
         return False
 
 @frappe.whitelist(allow_guest=True)
@@ -1525,9 +1551,9 @@ def generate_active_ristournes_from_previous(
                             f"Elle sera utilisable en {year} selon vos conditions."
                         )
                         try:
-                            frappe_send_sms(phones, msg)
+                            ok = all(_send_sms_via_settings(p, msg) for p in phones)
                             sms_sent += 1
-                            sms_info = {"phones": phones, "status": "sent"}
+                            sms_info = {"phones": phones, "status": "sent" if ok else "partial"}
                         except Exception:
                             sms_info = {"phones": phones, "status": "failed"}
                             frappe.log_error(frappe.get_traceback(), "Ristourne Active SMS")
