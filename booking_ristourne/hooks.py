@@ -288,16 +288,15 @@ fixtures = [
             ["doc_type", "in", ["Customer", "Sales Order"]],
         ],
     },
+    # NOTE : « Tache de travail » ne doit PLUS être en fixtures ici — il
+    # appartient à customization_app (fichier module customize_erpnext/doctype/
+    # tache_de_travail). Une deuxième entrée DocType écrasait aussi le fichier
+    # doctype.json de la première (seule la dernière survivait), et l'import
+    # fixture d'un DocType standard plante en prod sans developer_mode.
     {
         "doctype": "DocType",
         "filters": [
             ["module", "=", "Booking Ristourne"],
-        ],
-    },
-    {
-        "doctype": "DocType",
-        "filters": [
-            ["name", "=", "Tache de travail"],
         ],
     },
 
