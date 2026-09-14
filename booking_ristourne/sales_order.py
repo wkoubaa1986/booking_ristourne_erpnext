@@ -437,3 +437,40 @@ def _cancel_core(so_doc) -> Dict[str, Any]:
         except Exception:
             frappe.log_error(frappe.get_traceback(), f"{USED_DT} cancel/delete failed for {nm}")
     return {"status": "DONE", "deleted": deleted, "note": f"Cancelled & deleted {len(deleted)} used record(s)."}
+
+
+# ==========================================================
+# === PUBLIC: ce que CETTE commande a consommé (bandeau) ===
+# ==========================================================
+@frappe.whitelist()
+def get_applied_for_sales_order(sales_order: str) -> Dict[str, Any]:
+    """Le « Ristourne used » validé de cette commande, pour le bandeau permanent du formulaire.
+
+    ⚠️ Ne pas confondre avec `get_available_for_sales_order`, qui décrit la situation du CLIENT
+    À CE JOUR : celle-ci change tous les mois et le script client masque les champs ristourne
+    dès que le disponible tombe à zéro — y compris sur une commande validée qui, elle, a bel et
+    bien consommé sa ristourne. Cette méthode répond à l'autre question : « cette commande
+    a-t-elle une ristourne, et de combien ? » — réponse figée par le journal de consommation.
+    """
+    if not sales_order:
+        return {"applied": False}
+    if not frappe.has_permission("Sales Order", "read", sales_order):
+        frappe.throw(frappe._("Not permitted"), frappe.PermissionError)
+    rows = frappe.get_all(
+        USED_DT,
+        filters={"sales_order": sales_order, "docstatus": 1},
+        fields=["name", USED_AMOUNT_FIELD, USED_POSTING_DATETIME, "company"],
+        order_by=f"{USED_POSTING_DATETIME} desc",
+        limit_page_length=1,
+    )
+    if not rows:
+        return {"applied": False}
+    row = rows[0]
+    amount = _dec(row.get(USED_AMOUNT_FIELD))
+    return {
+        "applied": amount > 0,
+        "used_doc": row["name"],
+        "applied_amount": amount,
+        "posting_date": row.get(USED_POSTING_DATETIME),
+        "currency": _company_currency(row.get("company")),
+    }

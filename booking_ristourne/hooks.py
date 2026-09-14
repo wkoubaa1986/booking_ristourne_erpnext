@@ -44,6 +44,10 @@ app_license = "mit"
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+# Bandeau permanent « Ristourne appliquée » sur la commande : le Client Script « Ristourne »
+# (fixture) applique la remise mais ne laisse aucune trace visible une fois la commande validée.
+# ⚠️ Servi depuis le meta de formulaire mis en cache : `bench clear-cache` après toute évolution.
+doctype_js = {"Sales Order": "public/js/sales_order_ristourne_bandeau.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
