@@ -67,6 +67,24 @@ verifyBtn.addEventListener('click', verifyCode);
 
 // Enter = action rapide
 phoneInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendCode(); });
+
+// Remplissage automatique du code (WebOTP, Chrome/Android) : le SMS se termine par la ligne
+// « @aquaworldservicing.opssync.pro #123456 » (voir _message_otp côté serveur) ; le navigateur ne
+// la lit que si cette écoute est en cours quand le SMS arrive, d'où l'appel juste après l'envoi.
+// iOS propose le code au-dessus du clavier grâce à autocomplete="one-time-code", sans rien d'autre.
+let otpAbort = null;
+function ecouterOtp() {
+  if (!('OTPCredential' in window) || !navigator.credentials) return;
+  if (otpAbort) otpAbort.abort();
+  otpAbort = new AbortController();
+  navigator.credentials.get({ otp: { transport: ['sms'] }, signal: otpAbort.signal })
+    .then((otp) => {
+      if (!otp || !otp.code) return;
+      codeInput.value = otp.code;
+      verifyCode();
+    })
+    .catch(() => {});   // refus, expiration ou abandon : l'utilisateur saisit le code à la main
+}
 codeInput.addEventListener('keydown',  (e)=>{ if(e.key==='Enter') verifyCode(); });
 
 function startResendTimer() {
@@ -162,6 +180,7 @@ async function sendCode() {
       document.getElementById('code-step').classList.remove('hidden');
       startResendTimer();
       codeInput.focus();
+      ecouterOtp();
       setMsg(phoneError, '');
     } else if (status === 'denied') {
       // accès refusé (affiche raison claire depuis backend)
@@ -190,6 +209,7 @@ async function resendCode() {
 
     if (status === 'ok' || status === 'sent') {
       startResendTimer();
+      ecouterOtp();
       setMsg(codeError, "Nouveau code envoyé.", 'ok');
     } else if (status === 'denied') {
       setMsg(codeError, message || "Accès refusé. Veuillez contacter notre service commercial.", 'warn');
