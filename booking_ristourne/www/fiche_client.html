@@ -398,6 +398,9 @@ function loadInfoMessage(customerName) {
 
 const CAT = { customer: null, token: null, famille: null, selection: [], timer: null, derniere: '', cartes: {} };
 const CAT_API = '/api/method/booking_ristourne.catalogue_client.';
+// Jeton CSRF posé par le contrôleur (fiche_client.py) : sans lui, un POST depuis un navigateur
+// déjà connecté au Desk répond « Requête Invalide ».
+const CSRF_TOKEN = "{{ csrf_token }}";
 
 function initCatalogue(customer, token) {
   CAT.customer = customer;
@@ -444,7 +447,7 @@ function catPost(methode, params) {
   body.append('token', CAT.token);
   Object.keys(params || {}).forEach(k => body.append(k, params[k]));
   const headers = {};
-  if (window.frappe && window.frappe.csrf_token) headers['X-Frappe-CSRF-Token'] = window.frappe.csrf_token;
+  if (CSRF_TOKEN) headers['X-Frappe-CSRF-Token'] = CSRF_TOKEN;
   return fetch(CAT_API + methode, { method: 'POST', headers, body }).then(async r => {
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(catErreur(data));
@@ -630,7 +633,7 @@ function rechercherParPhoto(input) {
     if (CAT.famille) body.append('item_group', CAT.famille);
     body.append('limit', 20);
     const headers = {};
-    if (window.frappe && window.frappe.csrf_token) headers['X-Frappe-CSRF-Token'] = window.frappe.csrf_token;
+    if (CSRF_TOKEN) headers['X-Frappe-CSRF-Token'] = CSRF_TOKEN;
     return fetch(CAT_API + 'rechercher_par_photo', { method: 'POST', headers, body }).then(async r => {
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(catErreur(data));
