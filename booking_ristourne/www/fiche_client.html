@@ -184,6 +184,12 @@
     .cat-liste-row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f3f4f6; font-size:13px; }
     .cat-liste-row a { color:#007bff; font-weight:700; text-decoration:none; white-space:nowrap; }
     .cat-vide { color:#9ca3af; font-size:13px; }
+    .cat-photo-btn { padding:0 14px; border:1.5px solid #d1d5db; border-radius:8px; background:#fff; font-size:18px; cursor:pointer; }
+    .cat-photo-btn:hover { background:#f3f4f6; }
+    #cat-photo-apercu { display:flex; align-items:center; gap:10px; margin-top:8px; font-size:12px; color:#4b5563; }
+    #cat-photo-apercu:empty { display:none; }
+    #cat-photo-apercu img { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; }
+    #cat-photo-apercu button { border:none; background:#f3f4f6; border-radius:6px; padding:4px 8px; cursor:pointer; }
     .cat-corr { color:#92400e; margin-top:2px; }
     .cat-attrs { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
     .cat-attr { display:flex; flex-direction:column; font-size:11px; color:#6b7280; min-width:140px; flex:1; }
@@ -251,7 +257,10 @@
       <div class="cat-search">
         <input id="cat-query" type="search" placeholder="Nom, référence, usage… (ex. pompe osmoseur 600 GPD)" autocomplete="off">
         <button type="button" onclick="lancerRecherche(true)">Chercher</button>
+        <button type="button" class="cat-photo-btn" title="Rechercher à partir d'une photo" onclick="document.getElementById('cat-photo').click()">📷</button>
+        <input id="cat-photo" type="file" accept="image/*" capture="environment" hidden onchange="rechercherParPhoto(this)">
       </div>
+      <div id="cat-photo-apercu"></div>
       <div id="cat-familles" class="cat-familles"></div>
       <div id="cat-status" class="cat-status"></div>
       <div id="cat-results" class="cat-results"></div>
@@ -578,6 +587,70 @@ function renderCarte(it) {
   return '<div class="cat-card" data-code="' + esc(it.item_code) + '">' + img +
     '<div class="cat-body">' + corps + '</div>' +
     '<div class="cat-price"><div>' + prix + '</div>' + boutonAjout(it.item_code, pris) + '</div></div>';
+}
+
+/* --- recherche par photo (product-search /search/upload) --- */
+function reduirePhoto(file, maxCote) {
+  // Redimensionne côté navigateur : une photo de téléphone fait 3 à 8 Mo, 1024 px suffisent au modèle.
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const ratio = Math.min(1, maxCote / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(b => resolve(b || file), 'image/jpeg', 0.85);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+function rechercherParPhoto(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const status = document.getElementById('cat-status');
+  const results = document.getElementById('cat-results');
+  const apercu = document.getElementById('cat-photo-apercu');
+  apercu.innerHTML = '<img src="' + URL.createObjectURL(file) + '" alt=""><span>Analyse de la photo…</span>';
+  status.textContent = 'Recherche par photo…';
+  results.innerHTML = '';
+  CAT.derniere = 'photo:' + Date.now();
+
+  reduirePhoto(file, 1024).then(blob => {
+    const body = new FormData();
+    body.append('token', CAT.token);
+    body.append('image', blob, 'photo.jpg');
+    const q = document.getElementById('cat-query').value.trim();
+    if (q.length >= 2) body.append('query', q);
+    if (CAT.famille) body.append('item_group', CAT.famille);
+    body.append('limit', 20);
+    const headers = {};
+    if (window.frappe && window.frappe.csrf_token) headers['X-Frappe-CSRF-Token'] = window.frappe.csrf_token;
+    return fetch(CAT_API + 'rechercher_par_photo', { method: 'POST', headers, body }).then(async r => {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(catErreur(data));
+      return data.message;
+    });
+  }).then(r => {
+    const items = (r && r.results) || [];
+    const desc = r.description_photo ? '<span>Photo reconnue : <b>' + esc(r.description_photo) + '</b></span>' : '<span>Photo analysée</span>';
+    apercu.innerHTML = apercu.querySelector('img').outerHTML + desc + '<button type="button" onclick="document.getElementById(\'cat-photo-apercu\').innerHTML=\'\'">✕</button>';
+    if (!items.length) {
+      status.innerHTML = 'Aucun article ne ressemble à cette photo.';
+      return;
+    }
+    status.innerHTML = items.length + ' article' + (items.length > 1 ? 's' : '') + ' · prix « ' + esc(r.liste_de_prix) + ' »<span class="cat-src">recherche par photo</span>';
+    CAT.cartes = {};
+    results.innerHTML = items.map(renderCarte).join('');
+  }).catch(err => {
+    apercu.innerHTML = '';
+    status.textContent = 'Erreur : ' + err.message;
+  });
 }
 
 /* --- variantes : filtrage des options et prix de la variante choisie --- */

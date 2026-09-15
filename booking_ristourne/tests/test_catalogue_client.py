@@ -303,6 +303,48 @@ class TestCatalogueClient(FrappeTestCase):
         # « membrane » existe tel quel : aucune correction proposée.
         self.assertEqual(cc._corrections("membrane", cc._vocabulaire()), [])
 
+    # ------------------------------------------------------------ photo
+    def test_recherche_par_photo(self):
+        reponse = MagicMock()
+        reponse.raise_for_status.return_value = None
+        reponse.json.return_value = {"results": [{"item_code": self.item_a}], "auto_description": "bidon d'antitartre"}
+        with patch.object(cc, "_fichier_photo", return_value=(b"\xff\xd8jpeg", "photo.jpg", "image/jpeg")), \
+             patch.object(cc.requests, "post", return_value=reponse) as post:
+            r = cc.rechercher_par_photo(TOKEN, query="osmoseur", item_group="Adoucisseurs", limit=5)
+        args, kwargs = post.call_args
+        self.assertEqual(args[0], "http://product-search.test:8103/search/upload")
+        self.assertEqual(kwargs["files"]["image"][0], "photo.jpg")
+        self.assertEqual(kwargs["data"], {"limit": "5", "query": "osmoseur", "item_group": "Adoucisseurs"})
+        self.assertEqual(r["source"], "photo")
+        self.assertEqual(r["description_photo"], "bidon d'antitartre")
+        self.assertEqual([x["item_code"] for x in r["results"]], [self.item_a])
+        self.assertEqual(r["results"][0]["prix_ttc"], 80)
+
+    def test_photo_sans_service_ni_repli(self):
+        frappe.conf.pop("product_search_url", None)
+        with patch.object(cc, "_fichier_photo", return_value=(b"x", "p.jpg", "image/jpeg")), \
+             patch.object(cc.requests, "post") as post:
+            with self.assertRaises(frappe.ValidationError):
+                cc.rechercher_par_photo(TOKEN)
+        post.assert_not_called()
+
+    def test_photo_service_en_panne(self):
+        with patch.object(cc, "_fichier_photo", return_value=(b"x", "p.jpg", "image/jpeg")), \
+             patch.object(cc.requests, "post", side_effect=cc.requests.ConnectionError("refused")):
+            with self.assertRaises(frappe.ValidationError):
+                cc.rechercher_par_photo(TOKEN)
+        self.assertTrue(cc._service_marque_hs())
+
+    def test_photo_type_refuse(self):
+        fichier = MagicMock(content_type="application/pdf", filename="doc.pdf")
+        fichier.read.return_value = b"%PDF"
+        with patch.object(cc, "frappe") as fr:
+            fr.request.files = {"image": fichier}
+            fr.throw.side_effect = frappe.ValidationError
+            fr._ = frappe._
+            with self.assertRaises(frappe.ValidationError):
+                cc._fichier_photo()
+
     # ------------------------------------------------------------ liste de prix
     def test_creer_liste_prix_puis_la_retrouver(self):
         with patch.object(frappe.db, "commit"):

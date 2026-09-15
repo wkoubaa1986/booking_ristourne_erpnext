@@ -184,6 +184,63 @@ def _appeler_product_search(query: str, limit: int, item_group: str | None) -> l
     return codes
 
 
+PHOTO_TAILLE_MAX = 8 * 1024 * 1024
+PHOTO_TYPES = ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif")
+
+
+def _appeler_product_search_photo(image: bytes, nom: str, content_type: str, query: str | None,
+                                  limit: int, item_group: str | None) -> tuple[list[str], str | None]:
+    """Recherche par photo (+ texte facultatif) via /search/upload.
+
+    -> (codes classés, description automatique de la photo). Lève ValidationError si le
+    service n'est pas configuré ou ne répond pas : une photo n'a pas de repli ERPNext.
+    """
+    url = _url_service()
+    if not url or _service_marque_hs():
+        frappe.throw(_("La recherche par photo n'est pas disponible pour le moment."))
+    donnees = {"limit": str(limit)}
+    if query:
+        donnees["query"] = query
+    if item_group:
+        donnees["item_group"] = item_group
+    try:
+        reponse = requests.post(
+            f"{url}/search/upload",
+            files={"image": (nom or "photo.jpg", image, content_type or "image/jpeg")},
+            data=donnees,
+            timeout=flt(frappe.conf.get("product_search_photo_timeout")) or 30,
+        )
+        reponse.raise_for_status()
+        corps = reponse.json()
+    except Exception as exc:
+        _marquer_service_hs(str(exc))
+        frappe.log_error(title="Fiche client : product-search photo injoignable",
+                         message=f"{url}/search/upload\n{exc}")
+        frappe.throw(_("La recherche par photo n'est pas disponible pour le moment."))
+    codes = []
+    for r in corps.get("results") or []:
+        code = (r or {}).get("item_code")
+        if code and code not in codes:
+            codes.append(code)
+    return codes, corps.get("auto_description") or None
+
+
+def _fichier_photo() -> tuple[bytes, str, str]:
+    """La photo envoyée en multipart (champ `image`) : (octets, nom, type MIME)."""
+    fichier = (getattr(frappe.request, "files", None) or {}).get("image") if frappe.request else None
+    if not fichier:
+        frappe.throw(_("Aucune photo reçue."))
+    content_type = (fichier.content_type or "").split(";")[0].strip().lower()
+    if not content_type.startswith("image/") or content_type not in PHOTO_TYPES:
+        frappe.throw(_("Format de photo non pris en charge (JPEG, PNG ou WebP)."))
+    octets = fichier.read()
+    if not octets:
+        frappe.throw(_("La photo est vide."))
+    if len(octets) > PHOTO_TAILLE_MAX:
+        frappe.throw(_("Photo trop lourde (8 Mo maximum)."))
+    return octets, fichier.filename or "photo.jpg", content_type
+
+
 # ---------------------------------------------------------------------------
 # Recherche de repli dans ERPNext (mots-clés + synonymes, ET puis OU)
 # ---------------------------------------------------------------------------
@@ -635,6 +692,29 @@ def rechercher_articles(token, query, item_group=None, limit=20):
         "liste_de_prix": price_list,
         "total": len(results),
         "corrections": corrections if results else {},
+        "results": results,
+    }
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def rechercher_par_photo(token, query=None, item_group=None, limit=20):
+    """Recherche par photo (multipart `image`) + texte facultatif, via product-search.
+
+    -> {source: "photo", liste_de_prix, total, description_photo, results: [...]}
+    """
+    customer = _client_du_token(token)
+    octets, nom, content_type = _fichier_photo()
+    query = (query or "").strip()[:200] or None
+    limit = max(1, min(int(limit or 20), LIMITE_MAX))
+    item_group = (item_group or "").strip() or None
+    price_list = liste_de_prix_du_client(customer)
+    codes, description = _appeler_product_search_photo(octets, nom, content_type, query, limit, item_group)
+    results = _details_articles(codes, price_list)
+    return {
+        "source": "photo",
+        "liste_de_prix": price_list,
+        "total": len(results),
+        "description_photo": description,
         "results": results,
     }
 
