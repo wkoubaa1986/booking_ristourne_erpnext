@@ -141,43 +141,61 @@
       th,td{padding:4px;}
     }
 
-    /* Bouton POS */
-    .pos-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 9px 20px;
-      background: #e5e7eb;
-      color: #374151;
-      border: 1.5px solid #d1d5db;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      text-decoration: none;
-      white-space: nowrap;
-      box-shadow: 0 1px 4px rgba(0,0,0,.08);
-      transition: background .15s;
-    }
-    .pos-btn:hover { background: #d1d5db; color: #111827; }
-    .pos-btn.pos-btn-close {
-      background: #fee2e2;
-      color: #991b1b;
-      border-color: #fca5a5;
-    }
-    .pos-btn.pos-btn-close:hover { background: #fca5a5; color: #7f1d1d; }
-    #pos-btn-container { margin: 10px 0 4px 0; text-align: center; }
-    #pos-iframe-container {
-      width: 100%; margin-top: 12px;
-      border-radius: 8px; overflow: hidden;
-      box-shadow: 0 2px 8px rgba(0,0,0,.12);
-      display: none;
-    }
-    #pos-iframe-container iframe {
-      width: 100%; height: 85vh; border: none;
-    }
+    /* ---------- Catalogue : recherche d'articles + liste de prix ---------- */
+    #catalogue { text-align:left; margin:12px 0 4px 0; }
+    .cat-box { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; margin-bottom:10px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
+    .cat-box h3 { margin:0 0 8px 0; font-size:16px; }
+    .cat-search { display:flex; gap:8px; }
+    .cat-search input { flex:1; padding:11px 14px; font-size:16px; border:1.5px solid #d1d5db; border-radius:8px; outline:none; }
+    .cat-search input:focus { border-color:#007bff; }
+    .cat-search button { padding:0 16px; border:none; border-radius:8px; background:#007bff; color:#fff; font-weight:700; cursor:pointer; }
+    .cat-familles { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .cat-familles .group-btn { font-size:12px; }
+    .cat-status { font-size:12px; color:#6b7280; margin:8px 0 4px 0; min-height:16px; }
+    .cat-status .cat-src { display:inline-block; padding:1px 8px; border-radius:10px; background:#eef2ff; color:#3730a3; margin-left:4px; }
+    .cat-status .cat-src.simple { background:#fef3c7; color:#92400e; }
+    .cat-results { display:flex; flex-direction:column; gap:8px; }
+    .cat-card { display:flex; gap:10px; align-items:center; border:1px solid #e5e7eb; border-radius:8px; padding:8px; background:#fafafa; }
+    .cat-img { width:64px; height:64px; object-fit:contain; background:#fff; border:1px solid #eee; border-radius:6px; flex:none; }
+    .cat-img.vide { display:flex; align-items:center; justify-content:center; color:#bbb; font-size:22px; }
+    .cat-body { flex:1; min-width:0; }
+    .cat-name { font-weight:700; font-size:14px; }
+    .cat-meta { font-size:11px; color:#6b7280; margin-top:2px; }
+    .cat-desc { font-size:12px; color:#4b5563; margin-top:3px; }
+    .cat-price { text-align:right; flex:none; min-width:120px; }
+    .cat-ttc { font-size:16px; font-weight:700; color:#111827; }
+    .cat-ttc.demande { font-size:12px; color:#92400e; }
+    .cat-std { font-size:11px; color:#6b7280; }
+    .cat-std b { color:#166534; }
+    .cat-add { margin-top:6px; padding:6px 12px; border:1.5px solid #007bff; border-radius:8px; background:#fff; color:#007bff; font-weight:700; cursor:pointer; font-size:13px; }
+    .cat-add.ok { background:#dcfce7; border-color:#86efac; color:#166534; }
+    .cat-sel-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f3f4f6; font-size:13px; }
+    .cat-sel-row .cat-sel-name { flex:1; min-width:0; }
+    .cat-sel-row .cat-sel-code { color:#6b7280; font-size:11px; }
+    .cat-sel-row .cat-sel-prix { white-space:nowrap; font-weight:700; }
+    .cat-sel-row button { border:none; background:#fee2e2; color:#991b1b; border-radius:6px; padding:4px 8px; cursor:pointer; }
+    .cat-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
+    .cat-btn { padding:10px 18px; border:none; border-radius:8px; font-weight:700; cursor:pointer; font-size:14px; }
+    .cat-btn.primaire { background:#16a34a; color:#fff; }
+    .cat-btn.primaire:disabled { background:#9ca3af; cursor:not-allowed; }
+    .cat-btn.secondaire { background:#f3f4f6; color:#374151; }
+    .cat-ok { margin-top:10px; padding:10px 12px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; font-size:14px; }
+    .cat-err { margin-top:10px; padding:10px 12px; background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; font-size:13px; color:#991b1b; }
+    .cat-liste-row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f3f4f6; font-size:13px; }
+    .cat-liste-row a { color:#007bff; font-weight:700; text-decoration:none; white-space:nowrap; }
+    .cat-vide { color:#9ca3af; font-size:13px; }
+    .cat-corr { color:#92400e; margin-top:2px; }
+    .cat-attrs { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+    .cat-attr { display:flex; flex-direction:column; font-size:11px; color:#6b7280; min-width:140px; flex:1; }
+    .cat-attr select { margin-top:2px; padding:6px 8px; border:1px solid #d1d5db; border-radius:6px; font-size:13px; background:#fff; }
+    .cat-card.modele { border-color:#bfdbfe; background:#f8fbff; }
+    .cat-plage { margin-bottom:6px; padding-bottom:6px; border-bottom:1px dashed #d1d5db; }
+    .cat-paliers { margin-top:2px; }
     @media (max-width: 600px) {
-      .pos-btn { width: 100%; justify-content: center; }
+      .cat-card { flex-wrap:wrap; }
+      .cat-price { width:100%; display:flex; justify-content:space-between; align-items:center; text-align:left; }
+      .cat-add { margin-top:0; }
+      .cat-btn { width:100%; }
     }
   </style>
 </head>
@@ -227,8 +245,33 @@
 </header>
 
   <h2 id="page-title">Chargement...</h2>
-  <div id="pos-btn-container"></div>
-  <div id="pos-iframe-container"></div>
+  <div id="catalogue">
+    <div class="cat-box">
+      <h3>🔍 Rechercher un article</h3>
+      <div class="cat-search">
+        <input id="cat-query" type="search" placeholder="Nom, référence, usage… (ex. pompe osmoseur 600 GPD)" autocomplete="off">
+        <button type="button" onclick="lancerRecherche(true)">Chercher</button>
+      </div>
+      <div id="cat-familles" class="cat-familles"></div>
+      <div id="cat-status" class="cat-status"></div>
+      <div id="cat-results" class="cat-results"></div>
+    </div>
+
+    <div class="cat-box" id="cat-selection-box">
+      <h3>📋 Ma liste de prix <span id="cat-sel-count">(0)</span></h3>
+      <div id="cat-selection"><p class="cat-vide">Ajoutez des articles depuis la recherche : vous obtiendrez un PDF avec vos prix.</p></div>
+      <div class="cat-actions">
+        <button type="button" class="cat-btn primaire" id="cat-creer" onclick="creerListePrix()" disabled>📄 Créer ma liste de prix (PDF)</button>
+        <button type="button" class="cat-btn secondaire" onclick="viderSelection()">🗑 Vider</button>
+      </div>
+      <div id="cat-message"></div>
+    </div>
+
+    <div class="cat-box">
+      <h3>🗂 Mes listes précédentes</h3>
+      <div id="cat-mes-listes"><p class="cat-vide">Chargement…</p></div>
+    </div>
+  </div>
   <div id="links-content"></div>
 
   <div class="tabs">
@@ -288,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
           .catch(()=>{});
 
         loadDashboard(token);
-        loadPOSButton(customer, token);
+        initCatalogue(customer, token);
 
         // ping régulier
         setInterval(() => {
@@ -342,264 +385,351 @@ function loadInfoMessage(customerName) {
     });
 }
 
-/* ---------- BOUTON POS ---------- */
+/* ---------- CATALOGUE : RECHERCHE (product-search IA) + LISTE DE PRIX ---------- */
 
-function loadPOSButton(customerName, token) {
-  // Récupérer uniquement le profil POS au chargement (le SID sera récupéré au clic)
-  fetch(`/api/method/booking_ristourne.ristourne.get_pos_profile_for_customer?customer_name=${encodeURIComponent(customerName)}`)
-    .then(r => r.json())
-    .then(profileData => {
-      const profile = (profileData.message && profileData.message.pos_profile) || 'POS - Vente standard';
-      const btnContainer = document.getElementById('pos-btn-container');
-      if (!btnContainer) return;
-      const url = `/app/point-of-sale?pos_profile=${encodeURIComponent(profile)}`;
-      btnContainer.dataset.posUrl = url;
-      btnContainer.dataset.posCustomer = customerName;
-      btnContainer.dataset.posToken = token;
-      btnContainer.dataset.posProfile = profile;
-      btnContainer.innerHTML = `
-        <button onclick="togglePOS(this)" class="pos-btn">
-          🔍 Rechercher un article
-        </button>`;
-    }).catch(() => {});
+const CAT = { customer: null, token: null, famille: null, selection: [], timer: null, derniere: '', cartes: {} };
+const CAT_API = '/api/method/booking_ristourne.catalogue_client.';
+
+function initCatalogue(customer, token) {
+  CAT.customer = customer;
+  CAT.token = token;
+  chargerSelection();
+  renderSelection();
+  chargerFamilles();
+  chargerMesListes();
+
+  const input = document.getElementById('cat-query');
+  input.addEventListener('input', () => {
+    clearTimeout(CAT.timer);
+    CAT.timer = setTimeout(() => lancerRecherche(false), 350);
+  });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); lancerRecherche(true); } });
 }
 
-function togglePOS(btn) {
-  const iframeContainer = document.getElementById('pos-iframe-container');
-  const btnContainer = document.getElementById('pos-btn-container');
-  const url = btnContainer.dataset.posUrl;
-  const customer = btnContainer.dataset.posCustomer;
-  const token = btnContainer.dataset.posToken;
-  const posProfile = decodeURIComponent(url.split('pos_profile=')[1] || '');
-
-  if (iframeContainer.style.display === 'block') {
-    iframeContainer.style.display = 'none';
-    iframeContainer.innerHTML = '';
-    btn.classList.remove('pos-btn-close');
-    btn.textContent = '🔍 Rechercher un article';
-    // Si la session catalogue.pos a été activée, la supprimer pour ne pas
-    // interférer avec les sessions ERPNext des autres utilisateurs
-    const userIdCookie = document.cookie.split(';').find(c => c.trim().startsWith('user_id='));
-    if (userIdCookie && decodeURIComponent(userIdCookie.split('=')[1]) === 'catalogue.pos@aquaworld.com') {
-      fetch('/api/method/frappe.auth.logout', { method: 'POST' }).catch(() => {});
-    }
-  } else {
-    localStorage.setItem('pos_customer', customer);
-    btn.disabled = true;
-    btn.textContent = '⏳ Chargement...';
-
-    // Vérifier d'abord si un utilisateur Frappe est déjà connecté (employé ERPNext)
-    // Si oui : ne pas appeler get_catalogue_sid pour ne pas écraser sa session
-    fetch('/api/method/frappe.auth.get_logged_user')
-      .then(r => r.json())
-      .then(userResp => {
-        const currentUser = (userResp && userResp.message) || 'Guest';
-        const isEmployee = currentUser !== 'Guest' && currentUser !== 'catalogue.pos@aquaworld.com';
-
-        if (isEmployee) {
-          // Utilisateur ERPNext connecté → utiliser sa propre session, pas de get_catalogue_sid
-          // ensure_pos_opening_entry avec le CSRF token standard Frappe
-          const csrfToken = frappe && frappe.csrf_token ? frappe.csrf_token : '';
-          const formData = new FormData();
-          formData.append('pos_profile', posProfile);
-          const ensureHeaders = {};
-          if (csrfToken) ensureHeaders['X-Frappe-CSRF-Token'] = csrfToken;
-          return fetch(
-            '/api/method/booking_ristourne.ristourne.ensure_pos_opening_entry',
-            { method: 'POST', headers: ensureHeaders, body: formData }
-          ).catch(() => {});
-        } else {
-          // Client public (Guest) ou catalogue.pos → obtenir un SID catalogue frais
-          return fetch(`/api/method/booking_ristourne.ristourne.get_catalogue_sid?token=${encodeURIComponent(token)}`)
-            .then(r => r.json())
-            .then(sidData => {
-              const csrfToken = (sidData.message && sidData.message.csrf_token) || '';
-              const formData = new FormData();
-              formData.append('pos_profile', posProfile);
-              const ensureHeaders = {};
-              if (csrfToken) ensureHeaders['X-Frappe-CSRF-Token'] = csrfToken;
-              return fetch(
-                '/api/method/booking_ristourne.ristourne.ensure_pos_opening_entry',
-                { method: 'POST', headers: ensureHeaders, body: formData }
-              ).catch(() => {});
-            });
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        btn.disabled = false;
-
-        // Overlay gris "Chargement..." affiché pendant que l'iframe se charge
-        iframeContainer.innerHTML = `
-          <div id="pos-header-bar" style="
-            display:flex; align-items:center; background:#2d3748;
-            padding:8px 16px; border-radius:8px 8px 0 0; gap:10px;">
-            <span style="color:#a0aec0; font-size:12px;">Point de vente :</span>
-            <span style="color:#fff; font-weight:bold; font-size:14px;">${posProfile}</span>
-          </div>
-          <div id="pos-loader" style="
-            display:flex; align-items:center; justify-content:center;
-            min-height:420px; background:#f4f4f4; border-radius:0 0 8px 8px;
-            flex-direction:column; gap:14px;">
-            <div style="width:48px;height:48px;border:5px solid #ccc;border-top-color:#4c9be8;
-              border-radius:50%;animation:pos-spin 0.8s linear infinite;"></div>
-            <span style="color:#888;font-size:1rem;">Chargement du catalogue...</span>
-          </div>
-          <style>@keyframes pos-spin{to{transform:rotate(360deg)}}</style>`;
-        iframeContainer.style.display = 'block';
-        iframeContainer.scrollIntoView({behavior: 'smooth', block: 'start'});
-
-        const iframe = document.createElement('iframe');
-        iframe.id = 'pos-iframe';
-        iframe.allowFullscreen = true;
-        iframe.style.display = 'none'; // caché jusqu'au chargement complet
-
-        // CSS injecté dans l'iframe après chargement
-        const posCSS = `
-          header.navbar { display: none !important; }
-          body { padding-top: 0 !important; }
-          .item-qty-pill { display: none !important; }
-          .customer-section { display: none !important; }
-          .menu-btn-group { display: none !important; }
-          .page-head { display: none !important; }
-          .checkout-btn { display: none !important; }
-          .add-discount-wrapper { display: none !important; }
-          .uom-control { display: none !important; }
-          .conversion_factor-control { display: none !important; }
-          .actual_qty-control { display: none !important; }
-          .price_list_rate-control { display: none !important; }
-          .warehouse-control { display: none !important; }
-          .discount_percentage-control { display: none !important; }
-          .cart-totals-section > .net-total-container { display: flex !important; justify-content: space-between !important; }
-          .cart-totals-section > .taxes-container { display: flex !important; flex-direction: column !important; }
-        `;
-
-        // JS injecté dans l'iframe : champ "Remise" calculé vs prix "Vente standard"
-        const posJS = `(function() {
-          var PRICE_LIST = "Vente standard";
-          var _lastItemCode = null;
-
-          function ensureRemiseBlock() {
-            var rateCtrl = document.querySelector('.rate-control');
-            if (!rateCtrl) return null;
-            var block = document.getElementById('_custom_remise_block');
-            if (!block) {
-              block = document.createElement('div');
-              block.id = '_custom_remise_block';
-              block.style.cssText = 'margin-top:10px;padding:8px 14px;background:#f0fdf4;border-radius:8px;font-size:13px;color:#166534;font-weight:500;';
-              block.innerHTML = '<span>Remise : </span><span id="_custom_remise_val" style="font-weight:700;">...</span>';
-              rateCtrl.parentNode.insertBefore(block, rateCtrl.nextSibling);
-            }
-            return block;
-          }
-
-          function checkAndUpdate() {
-            var pos = window.cur_pos;
-            if (!pos || !pos.item_details) return;
-            var container = document.querySelector('.item-details-container');
-            if (!container) return;
-            // Check if visible
-            var style = window.getComputedStyle(container);
-            if (style.display === 'none' || style.visibility === 'hidden') {
-              _lastItemCode = null;
-              return;
-            }
-            var item_row = pos.item_details.item_row;
-            if (!item_row || !item_row.item_code) return;
-            var item_code = item_row.item_code;
-            var currentRate = parseFloat(item_row.rate) || parseFloat(item_row.price_list_rate) || 0;
-
-            var block = ensureRemiseBlock();
-            if (!block) return;
-            var valEl = document.getElementById('_custom_remise_val');
-
-            if (item_code === _lastItemCode) return;
-            _lastItemCode = item_code;
-            if (valEl) valEl.textContent = '...';
-
-            window.frappe.call({
-              method: "frappe.client.get_list",
-              args: {
-                doctype: "Item Price",
-                filters: [["item_code","=",item_code],["price_list","=",PRICE_LIST],["selling","=",1]],
-                fields: ["price_list_rate"],
-                limit: 1
-              },
-              freeze: false,
-              callback: function(r) {
-                var b = document.getElementById('_custom_remise_block');
-                var v = document.getElementById('_custom_remise_val');
-                if (!b || !v) return;
-                var rows = r && r.message;
-                if (!rows || !rows.length) {
-                  v.textContent = 'Non disponible';
-                  b.style.background = '#fef9c3'; b.style.color = '#92400e';
-                  return;
-                }
-                var stdPrice = parseFloat(rows[0].price_list_rate) || 0;
-                if (stdPrice <= 0) { v.textContent = 'Non disponible'; return; }
-                var pct = Math.max(0, (stdPrice - currentRate) / stdPrice * 100);
-                b.style.background = pct > 0 ? '#f0fdf4' : '#f1f5f9';
-                b.style.color = pct > 0 ? '#166534' : '#475569';
-                v.textContent = pct.toFixed(1) + "% (Prix vente standard : " + stdPrice.toFixed(3) + " \u062f.\u062a)";
-              }
-            });
-          }
-
-          // Override page_length pour afficher plus d'articles (200 au lieu de 40)
-          var _pageLengthPatched = false;
-          function patchPageLength() {
-            var pos = window.cur_pos;
-            if (!pos || !pos.item_selector || _pageLengthPatched) return;
-            var orig = pos.item_selector.get_items.bind(pos.item_selector);
-            pos.item_selector.get_items = function(opts) {
-              opts = opts || {};
-              if (!opts.page_length) opts.page_length = 200;
-              return orig(opts);
-            };
-            _pageLengthPatched = true;
-            // Recharger la liste avec le nouveau page_length
-            pos.item_selector.filter_items();
-          }
-
-          // Polling 400ms : Remise + force-show Total HT/TVA + page_length patch
-          setInterval(function() {
-            checkAndUpdate();
-            patchPageLength();
-            var netCont = document.querySelector('.net-total-container');
-            if (netCont) netCont.style.setProperty('display', 'flex', 'important');
-            var taxCont = document.querySelector('.taxes-container');
-            if (taxCont && taxCont.children.length > 0) taxCont.style.setProperty('display', 'flex', 'important');
-          }, 400);
-        })();`;
-
-        iframe.addEventListener('load', function() {
-          // Injecter le CSS de masquage
-          try {
-            const doc = this.contentDocument || this.contentWindow.document;
-            const win = this.contentWindow;
-            if (doc && doc.head) {
-              const style = doc.createElement('style');
-              style.textContent = posCSS;
-              doc.head.appendChild(style);
-              // Injecter le JS "Remise" après que le POS soit initialisé
-              const script = doc.createElement('script');
-              script.textContent = posJS;
-              doc.head.appendChild(script);
-            }
-          } catch(e) {}
-          // Remplacer le loader par l'iframe
-          const loader = document.getElementById('pos-loader');
-          if (loader) loader.remove();
-          this.style.display = 'block';
-        });
-
-        iframeContainer.appendChild(iframe);
-        iframe.src = url; // déclenche le chargement APRÈS avoir attaché le listener
-        btn.classList.add('pos-btn-close');
-        btn.textContent = '✕ Fermer le catalogue';
-      });
+function catErreur(data) {
+  if (!data) return 'Erreur inconnue';
+  if (data._server_messages) {
+    try {
+      const msgs = JSON.parse(data._server_messages).map(m => { try { return JSON.parse(m).message; } catch (e) { return m; } });
+      if (msgs.length) return msgs.join(' ');
+    } catch (e) {}
   }
+  if (data.exception) return String(data.exception).split(':').pop().trim();
+  if (data.message && typeof data.message === 'string') return data.message;
+  return 'Erreur inconnue';
+}
+
+function catGet(methode, params) {
+  const url = new URL(CAT_API + methode, window.location.origin);
+  url.searchParams.set('token', CAT.token);
+  Object.keys(params || {}).forEach(k => { if (params[k] !== null && params[k] !== undefined && params[k] !== '') url.searchParams.set(k, params[k]); });
+  return fetch(url.toString()).then(async r => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(catErreur(data));
+    return data.message;
+  });
+}
+
+function catPost(methode, params) {
+  const body = new FormData();
+  body.append('token', CAT.token);
+  Object.keys(params || {}).forEach(k => body.append(k, params[k]));
+  const headers = {};
+  if (window.frappe && window.frappe.csrf_token) headers['X-Frappe-CSRF-Token'] = window.frappe.csrf_token;
+  return fetch(CAT_API + methode, { method: 'POST', headers, body }).then(async r => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(catErreur(data));
+    return data.message;
+  });
+}
+
+function esc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function fmtDT(v) {
+  if (v === null || v === undefined) return null;
+  return Number(v).toFixed(3).replace('.', ',') + ' DT';
+}
+
+/* --- familles (filtre) --- */
+function chargerFamilles() {
+  catGet('familles_articles').then(familles => {
+    const wrap = document.getElementById('cat-familles');
+    wrap.innerHTML = '';
+    (familles || []).forEach(f => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'group-btn';
+      b.textContent = f.label;
+      b.dataset.name = f.name;
+      b.addEventListener('click', () => {
+        CAT.famille = (CAT.famille === f.name) ? null : f.name;
+        wrap.querySelectorAll('.group-btn').forEach(x => x.classList.toggle('active', x.dataset.name === CAT.famille));
+        lancerRecherche(true);
+      });
+      wrap.appendChild(b);
+    });
+  }).catch(() => {});
+}
+
+/* --- recherche --- */
+function lancerRecherche(force) {
+  const q = document.getElementById('cat-query').value.trim();
+  const status = document.getElementById('cat-status');
+  const results = document.getElementById('cat-results');
+  if (q.length < 2) {
+    status.textContent = '';
+    results.innerHTML = '';
+    CAT.derniere = '';
+    return;
+  }
+  const cle = q + '|' + (CAT.famille || '');
+  if (!force && cle === CAT.derniere) return;
+  CAT.derniere = cle;
+  status.textContent = 'Recherche…';
+
+  catGet('rechercher_articles', { query: q, item_group: CAT.famille, limit: 20 }).then(r => {
+    if (cle !== CAT.derniere) return; // une recherche plus récente a pris le relais
+    const items = (r && r.results) || [];
+    if (!items.length) {
+      status.innerHTML = 'Aucun article trouvé' + (CAT.famille ? ' dans « ' + esc(CAT.famille) + ' »' : '') + '.';
+      results.innerHTML = '';
+      return;
+    }
+    const src = r.source === 'ia'
+      ? '<span class="cat-src">recherche intelligente</span>'
+      : '<span class="cat-src simple">recherche simple</span>';
+    const corr = Object.keys(r.corrections || {}).map(m => '« ' + esc(m) + ' » → ' + (r.corrections[m] || []).slice(0, 3).map(esc).join(', '));
+    status.innerHTML = items.length + ' article' + (items.length > 1 ? 's' : '') +
+      ' · prix « ' + esc(r.liste_de_prix) + ' »' + src +
+      (corr.length ? '<div class="cat-corr">Recherche élargie : ' + corr.join(' ; ') + '</div>' : '');
+    CAT.cartes = {};
+    results.innerHTML = items.map(renderCarte).join('');
+  }).catch(err => {
+    status.textContent = 'Erreur : ' + err.message;
+    results.innerHTML = '';
+  });
+}
+
+function remisesQuantiteHtml(it) {
+  const paliers = (it && it.remises_quantite) || [];
+  if (!paliers.length) return '';
+  return '<div class="cat-std cat-paliers">Remise quantité : ' +
+    paliers.map(p => '<b>-' + String(p.pct).replace('.', ',') + ' %</b> dès ' + p.min_qty).join(' · ') + '</div>';
+}
+
+function prixHtml(it) {
+  if (it.prix_ttc === null || it.prix_ttc === undefined) {
+    return '<div class="cat-ttc demande">Prix sur demande</div>';
+  }
+  let html = '<div class="cat-ttc">' + fmtDT(it.prix_ttc) + '</div>';
+  if (it.remise_pct > 0 && it.prix_standard_ttc) {
+    html += '<div class="cat-std">Prix standard ' + fmtDT(it.prix_standard_ttc) +
+      ' · <b>-' + String(it.remise_pct).replace('.', ',') + ' %</b></div>';
+  } else {
+    html += '<div class="cat-std">TTC · TVA ' + esc(it.tva) + ' %</div>';
+  }
+  return html + remisesQuantiteHtml(it);
+}
+
+function boutonAjout(code, pris) {
+  return '<button type="button" class="cat-add' + (pris ? ' ok' : '') + '" data-item="' + esc(code) + '" onclick="ajouterCarte(this)">' +
+    (pris ? '✓ Ajouté' : '+ Ajouter') + '</button>';
+}
+
+function renderCarte(it) {
+  CAT.cartes[it.item_code] = it;
+  const img = it.image
+    ? '<img class="cat-img" src="' + esc(it.image) + '" alt="" loading="lazy">'
+    : '<div class="cat-img vide">📦</div>';
+  const meta = [it.item_code, it.item_group, it.brand].filter(Boolean).map(esc).join(' · ');
+  let corps = '<div class="cat-name">' + esc(it.item_name) + '</div><div class="cat-meta">' + meta + '</div>' +
+    (it.description ? '<div class="cat-desc">' + esc(it.description) + '</div>' : '');
+  let prix;
+
+  if (it.est_modele) {
+    // Modèle : plage de prix des variantes + un sélecteur par attribut.
+    let plage;
+    if (it.prix_min === null || it.prix_min === undefined) {
+      plage = '<div class="cat-ttc demande">Prix sur demande</div>';
+    } else if (it.prix_min === it.prix_max) {
+      plage = '<div class="cat-ttc">' + fmtDT(it.prix_min) + '</div>';
+    } else {
+      plage = '<div class="cat-ttc">' + fmtDT(it.prix_min) + ' – ' + fmtDT(it.prix_max) + '</div>';
+    }
+    plage += '<div class="cat-std">' + it.nb_variantes + ' variante' + (it.nb_variantes > 1 ? 's' : '') +
+      (it.remise_max > 0 ? ' · jusqu\'à <b>-' + String(it.remise_max).replace('.', ',') + ' %</b>' : '') + '</div>';
+    corps += '<div class="cat-attrs">' + (it.attributs || []).map(a =>
+      '<label class="cat-attr"><span>' + esc(a.nom) + '</span><select data-attr="' + esc(a.nom) + '" onchange="changerVariante(this)">' +
+      '<option value="">Choisir…</option>' +
+      a.valeurs.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('') +
+      '</select></label>').join('') + '</div>';
+    prix = '<div class="cat-plage">' + plage + '</div><div class="cat-variante"><div class="cat-std">Choisissez les options pour voir votre prix.</div></div>';
+    return '<div class="cat-card modele" data-code="' + esc(it.item_code) + '">' + img +
+      '<div class="cat-body">' + corps + '</div>' +
+      '<div class="cat-price"><div>' + prix + '</div>' +
+      '<button type="button" class="cat-add" data-item="" onclick="ajouterCarte(this)" disabled>+ Ajouter</button></div></div>';
+  }
+
+  const pris = CAT.selection.some(s => s.item_code === it.item_code);
+  prix = prixHtml(it);
+  return '<div class="cat-card" data-code="' + esc(it.item_code) + '">' + img +
+    '<div class="cat-body">' + corps + '</div>' +
+    '<div class="cat-price"><div>' + prix + '</div>' + boutonAjout(it.item_code, pris) + '</div></div>';
+}
+
+/* --- variantes : filtrage des options et prix de la variante choisie --- */
+function changerVariante(select) {
+  const card = select.closest('.cat-card');
+  const it = CAT.cartes[card.dataset.code];
+  if (!it) return;
+  const selects = Array.from(card.querySelectorAll('select[data-attr]'));
+  const choix = {};
+  selects.forEach(s => { if (s.value) choix[s.dataset.attr] = s.value; });
+
+  // Ne proposer que les valeurs compatibles avec les autres choix.
+  selects.forEach(s => {
+    const autres = Object.assign({}, choix);
+    delete autres[s.dataset.attr];
+    const possibles = new Set(it.variantes
+      .filter(v => Object.keys(autres).every(k => v.attributs[k] === autres[k]))
+      .map(v => v.attributs[s.dataset.attr]));
+    Array.from(s.options).forEach(o => { if (o.value) o.disabled = !possibles.has(o.value); });
+    if (s.value && !possibles.has(s.value)) { s.value = ''; delete choix[s.dataset.attr]; }
+  });
+
+  const candidates = it.variantes.filter(v => Object.keys(choix).every(k => v.attributs[k] === choix[k]));
+  const complet = Object.keys(choix).length === selects.length;
+  const zone = card.querySelector('.cat-variante');
+  const btn = card.querySelector('.cat-add');
+  const variante = (complet && candidates.length === 1) ? candidates[0]
+    : (candidates.length === 1 && candidates[0] && selects.length === 0 ? candidates[0] : null);
+
+  if (variante) {
+    zone.innerHTML = '<div class="cat-meta">' + esc(variante.item_code) + '</div>' + prixHtml(variante);
+    btn.disabled = false;
+    btn.dataset.item = variante.item_code;
+    const pris = CAT.selection.some(s => s.item_code === variante.item_code);
+    btn.classList.toggle('ok', pris);
+    btn.textContent = pris ? '✓ Ajouté' : '+ Ajouter';
+  } else {
+    zone.innerHTML = '<div class="cat-std">' + (candidates.length ? candidates.length + ' variante' + (candidates.length > 1 ? 's' : '') + ' possible' + (candidates.length > 1 ? 's' : '') + ' — précisez les options.' : 'Aucune variante avec ces options.') + '</div>';
+    btn.disabled = true;
+    btn.dataset.item = '';
+    btn.classList.remove('ok');
+    btn.textContent = '+ Ajouter';
+  }
+}
+
+function ajouterCarte(btn) {
+  const code = btn.dataset.item;
+  if (!code) return;
+  const card = btn.closest('.cat-card');
+  const it = CAT.cartes[card.dataset.code];
+  let article = it;
+  if (it && it.est_modele) {
+    const v = it.variantes.find(x => x.item_code === code);
+    if (!v) return;
+    const opts = (it.attributs || []).map(a => v.attributs[a.nom]).filter(Boolean).join(' / ');
+    article = { item_code: v.item_code, item_name: it.item_name + (opts ? ' — ' + opts : ''), prix_ttc: v.prix_ttc };
+  }
+  ajouterArticle({ item_code: article.item_code, item_name: article.item_name, prix_ttc: article.prix_ttc });
+}
+
+/* --- sélection (liste de prix en cours) --- */
+function cleSelection() { return 'fiche_client_liste_' + CAT.customer; }
+
+function chargerSelection() {
+  try { CAT.selection = JSON.parse(localStorage.getItem(cleSelection()) || '[]'); } catch (e) { CAT.selection = []; }
+  if (!Array.isArray(CAT.selection)) CAT.selection = [];
+}
+
+function sauverSelection() {
+  try { localStorage.setItem(cleSelection(), JSON.stringify(CAT.selection)); } catch (e) {}
+}
+
+function ajouterArticle(a) {
+  if (!a || !a.item_code) return;
+  const idx = CAT.selection.findIndex(s => s.item_code === a.item_code);
+  if (idx >= 0) CAT.selection.splice(idx, 1); else CAT.selection.push(a);
+  sauverSelection();
+  renderSelection();
+  document.querySelectorAll('.cat-add[data-item="' + CSS.escape(a.item_code) + '"]').forEach(b => {
+    const pris = idx < 0;
+    b.classList.toggle('ok', pris);
+    b.textContent = pris ? '✓ Ajouté' : '+ Ajouter';
+  });
+}
+
+function retirerArticle(code) {
+  ajouterArticle(CAT.selection.find(s => s.item_code === code) || { item_code: code });
+}
+
+function viderSelection() {
+  if (CAT.selection.length && !confirm('Vider la liste en cours ?')) return;
+  CAT.selection = [];
+  sauverSelection();
+  renderSelection();
+  document.querySelectorAll('.cat-add.ok').forEach(b => { b.classList.remove('ok'); b.textContent = '+ Ajouter'; });
+}
+
+function renderSelection() {
+  const n = CAT.selection.length;
+  document.getElementById('cat-sel-count').textContent = '(' + n + ')';
+  document.getElementById('cat-creer').disabled = n === 0;
+  const box = document.getElementById('cat-selection');
+  if (!n) {
+    box.innerHTML = '<p class="cat-vide">Ajoutez des articles depuis la recherche : vous obtiendrez un PDF avec vos prix.</p>';
+    return;
+  }
+  box.innerHTML = CAT.selection.map(s =>
+    '<div class="cat-sel-row"><div class="cat-sel-name">' + esc(s.item_name || s.item_code) +
+    '<div class="cat-sel-code">' + esc(s.item_code) + '</div></div>' +
+    '<div class="cat-sel-prix">' + (fmtDT(s.prix_ttc) || 'Sur demande') + '</div>' +
+    '<button type="button" title="Retirer" onclick="retirerArticle(' + JSON.stringify(s.item_code).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + ')">✕</button></div>'
+  ).join('');
+}
+
+function creerListePrix() {
+  const btn = document.getElementById('cat-creer');
+  const msg = document.getElementById('cat-message');
+  if (!CAT.selection.length) return;
+  btn.disabled = true;
+  btn.textContent = '⏳ Création…';
+  msg.innerHTML = '';
+  catPost('creer_liste_prix', { articles: JSON.stringify(CAT.selection.map(s => ({ item_code: s.item_code }))) })
+    .then(r => {
+      msg.innerHTML = '<div class="cat-ok">✅ Liste <strong>' + esc(r.name) + '</strong> créée (' + r.nb_articles + ' article' + (r.nb_articles > 1 ? 's' : '') + '). ' +
+        '<a href="' + esc(r.pdf_url) + '" target="_blank" rel="noopener">📄 Ouvrir le PDF</a></div>';
+      CAT.selection = [];
+      sauverSelection();
+      renderSelection();
+      document.querySelectorAll('.cat-add.ok').forEach(b => { b.classList.remove('ok'); b.textContent = '+ Ajouter'; });
+      chargerMesListes();
+    })
+    .catch(err => {
+      msg.innerHTML = '<div class="cat-err">' + esc(err.message) + '</div>';
+      btn.disabled = false;
+    })
+    .finally(() => { btn.textContent = '📄 Créer ma liste de prix (PDF)'; });
+}
+
+/* --- listes déjà créées --- */
+function chargerMesListes() {
+  const box = document.getElementById('cat-mes-listes');
+  catGet('mes_listes_prix', { limit: 10 }).then(listes => {
+    if (!listes || !listes.length) {
+      box.innerHTML = '<p class="cat-vide">Aucune liste créée pour le moment.</p>';
+      return;
+    }
+    box.innerHTML = listes.map(l =>
+      '<div class="cat-liste-row"><div>' + esc(l.creation) + ' · ' + l.nb_articles + ' article' + (l.nb_articles > 1 ? 's' : '') +
+      ' <span class="cat-sel-code">' + esc(l.name) + '</span></div>' +
+      '<a href="' + esc(l.pdf_url) + '" target="_blank" rel="noopener">📄 PDF</a></div>'
+    ).join('');
+  }).catch(() => { box.innerHTML = '<p class="cat-vide">Listes indisponibles.</p>'; });
 }
 
 /* ---------- DASHBOARD (TOTAL VENTES / RISTOURNE) ---------- */

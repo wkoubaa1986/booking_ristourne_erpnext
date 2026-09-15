@@ -457,6 +457,22 @@ def _send_sms_via_settings(phone: str, message: str) -> bool:
         print(f"[SMS] Fallback urllib échoué ({e2})")
         return False
 
+def _message_otp(code: str) -> str:
+    """SMS de l'OTP, terminé par la ligne WebOTP « @domaine #code ».
+
+    Avec cette dernière ligne, Chrome/Android propose le code directement
+    au-dessus du clavier sur la page /client_login (champ
+    autocomplete="one-time-code") ; iOS le suggère déjà d'après le texte.
+    """
+    from urllib.parse import urlparse
+
+    domaine = urlparse(frappe.utils.get_url()).hostname or ""
+    message = f"Votre code de connexion AquaWorld est : {code}. Il expire dans 5 minutes."
+    if domaine:
+        message += f"\n\n@{domaine} #{code}"
+    return message
+
+
 @frappe.whitelist(allow_guest=True)
 def send_login_code(phone_number):
     """Envoie un OTP à 6 chiffres (stocké 5 minutes). 
@@ -496,13 +512,17 @@ def send_login_code(phone_number):
     # Envoi conditionnel de l'OTP par SMS
     sms_status = "disabled"
     if _sms_otp_enabled():
-        message = f"Votre code de connexion AquaWorld est : {code}. Il expire dans 5 minutes."
+        message = _message_otp(code)
         # NOTE: tu peux remplacer "21652371000" par phone_number si ton passerelle attend E.164
         ok = _send_sms_via_settings("216" + phone_number, message)
         sms_status = "sent" if ok else "failed"
 
-    # Log minimal pour debug
+    # Log minimal pour debug ; sans SMS (dev), le code est lisible dans logs/booking_ristourne.log
     print(f"[OTP] phone={phone_number} code={code} sms={sms_status}")
+    if sms_status == "disabled":
+        # warning : le niveau par défaut du logger frappe (WARNING en dev) filtre les info.
+        frappe.logger("booking_ristourne", allow_site=True).warning(
+            f"OTP fiche client (SMS désactivé) phone={phone_number} code={code}")
     return {"status": "sent", "sms": sms_status}
 
 @frappe.whitelist(allow_guest=True)

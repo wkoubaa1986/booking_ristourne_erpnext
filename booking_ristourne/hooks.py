@@ -269,6 +269,7 @@ fixtures = [
         "filters": [
             ["name", "in", [
                 "Aqua World BC", "Aqua World BL", "Aqua world Devis", "Aqua World Facture",
+                "Liste prix client",
             ]]
         ]
     },
@@ -277,12 +278,13 @@ fixtures = [
     {
         "doctype": "Custom Field",
         "filters": [
-            ["dt", "in", ["Customer", "Sales Order"]],
+            ["dt", "in", ["Customer", "Sales Order", "Liste prix documents"]],
             ["fieldname", "in", [
                 "custom_autoriser_acces_fiche_client",
                 "custom_fiche_client_token",
                 "custom_ristourne_disponible",
                 "custom_appliquer_ristourne",
+                "custom_client",
             ]],
         ],
     },
