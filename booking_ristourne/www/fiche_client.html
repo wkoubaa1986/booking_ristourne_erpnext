@@ -174,6 +174,13 @@
     .cat-sel-row .cat-sel-code { color:#6b7280; font-size:11px; }
     .cat-sel-row .cat-sel-prix { white-space:nowrap; font-weight:700; }
     .cat-sel-row button { border:none; background:#fee2e2; color:#991b1b; border-radius:6px; padding:4px 8px; cursor:pointer; }
+    .cat-sel-row .cat-sel-qte { width:54px; padding:4px; border:1px solid #cbd5e1; border-radius:6px; text-align:center; font-size:13px; }
+    .cat-sel-row .cat-sel-total { white-space:nowrap; font-weight:700; min-width:88px; text-align:right; }
+    .cat-sel-row .cat-sel-palier { display:block; font-size:11px; color:#6b7280; font-weight:400; }
+    .cat-sel-row .cat-sel-palier.atteint { color:#166534; font-weight:700; }
+    .cat-sel-row .cat-sel-prix { white-space:nowrap; font-weight:400; font-size:12px; color:#374151; }
+    .cat-sel-recap { text-align:right; font-size:13px; padding:8px 0 2px; color:#374151; }
+    .cat-sel-recap b { color:#166534; }
     .cat-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; align-items:center; }
     .cat-btn { padding:10px 18px; border:none; border-radius:8px; font-weight:700; cursor:pointer; font-size:14px; }
     .cat-btn.primaire { background:#16a34a; color:#fff; }
@@ -709,9 +716,11 @@ function ajouterCarte(btn) {
     const v = it.variantes.find(x => x.item_code === code);
     if (!v) return;
     const opts = (it.attributs || []).map(a => v.attributs[a.nom]).filter(Boolean).join(' / ');
-    article = { item_code: v.item_code, item_name: it.item_name + (opts ? ' — ' + opts : ''), prix_ttc: v.prix_ttc };
+    article = Object.assign({}, v, { item_name: it.item_name + (opts ? ' — ' + opts : '') });
   }
-  ajouterArticle({ item_code: article.item_code, item_name: article.item_name, prix_ttc: article.prix_ttc });
+  ajouterArticle({ item_code: article.item_code, item_name: article.item_name, prix_ttc: article.prix_ttc,
+    prix_standard_ttc: article.prix_standard_ttc || null, remise_pct: article.remise_pct || 0,
+    remises_quantite: article.remises_quantite || [], qte: 1 });
 }
 
 /* --- sélection (liste de prix en cours) --- */
@@ -751,6 +760,30 @@ function viderSelection() {
   document.querySelectorAll('.cat-add.ok').forEach(b => { b.classList.remove('ok'); b.textContent = '+ Ajouter'; });
 }
 
+function palierPour(paliers, qte) {
+  let atteint = null, prochain = null;
+  (paliers || []).forEach(p => {
+    if (Number(p.min_qty) <= qte) { if (!atteint || Number(p.pct) > Number(atteint.pct)) atteint = p; }
+    else if (!prochain) prochain = p;
+  });
+  return { atteint, prochain };
+}
+
+function totalLigne(s) {
+  if (s.prix_ttc === null || s.prix_ttc === undefined) return null;
+  const qte = Math.max(1, parseInt(s.qte, 10) || 1);
+  const { atteint } = palierPour(s.remises_quantite, qte);
+  return Number(s.prix_ttc) * qte * (atteint ? 1 - Number(atteint.pct) / 100 : 1);
+}
+
+function changerQte(code, valeur) {
+  const s = CAT.selection.find(x => x.item_code === code);
+  if (!s) return;
+  s.qte = Math.max(1, Math.min(9999, parseInt(valeur, 10) || 1));
+  sauverSelection();
+  renderSelection();
+}
+
 function renderSelection() {
   const n = CAT.selection.length;
   document.getElementById('cat-sel-count').textContent = '(' + n + ')';
@@ -760,12 +793,28 @@ function renderSelection() {
     box.innerHTML = '<p class="cat-vide">Ajoutez des articles depuis la recherche : vous obtiendrez un PDF avec vos prix.</p>';
     return;
   }
-  box.innerHTML = CAT.selection.map(s =>
-    '<div class="cat-sel-row"><div class="cat-sel-name">' + esc(s.item_name || s.item_code) +
-    '<div class="cat-sel-code">' + esc(s.item_code) + '</div></div>' +
-    '<div class="cat-sel-prix">' + (fmtDT(s.prix_ttc) || 'Sur demande') + '</div>' +
-    '<button type="button" title="Retirer" onclick="retirerArticle(' + JSON.stringify(s.item_code).replace(/&/g, '&amp;').replace(/"/g, '&quot;') + ')">✕</button></div>'
-  ).join('');
+  let total = 0, totalStd = 0, prixConnus = true;
+  box.innerHTML = CAT.selection.map(s => {
+    const qte = Math.max(1, parseInt(s.qte, 10) || 1);
+    const { atteint, prochain } = palierPour(s.remises_quantite, qte);
+    const t = totalLigne(s);
+    if (t === null) prixConnus = false; else { total += t; totalStd += Number(s.prix_standard_ttc || s.prix_ttc) * qte; }
+    const codeJs = JSON.stringify(s.item_code).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    let palier = '';
+    if (atteint) palier += '<span class="cat-sel-palier atteint">✔ -' + String(atteint.pct).replace('.', ',') + ' % dès ' + atteint.min_qty + ' appliquée</span>';
+    if (prochain) palier += '<span class="cat-sel-palier">-' + String(prochain.pct).replace('.', ',') + ' % dès ' + prochain.min_qty + (atteint ? '' : ' : ajoutez ' + (prochain.min_qty - qte)) + '</span>';
+    return '<div class="cat-sel-row"><div class="cat-sel-name">' + esc(s.item_name || s.item_code) +
+      '<div class="cat-sel-code">' + esc(s.item_code) + '</div>' + palier + '</div>' +
+      '<div class="cat-sel-prix">' + (fmtDT(s.prix_ttc) || 'Sur demande') + (s.remise_pct > 0 ? '<br><small>standard ' + fmtDT(s.prix_standard_ttc) + ' · -' + String(s.remise_pct).replace('.', ',') + ' %</small>' : '') + '</div>' +
+      '<input class="cat-sel-qte" type="number" min="1" max="9999" inputmode="numeric" value="' + qte + '" title="Quantité" onchange="changerQte(' + codeJs + ', this.value)">' +
+      '<div class="cat-sel-total">' + (t === null ? '—' : fmtDT(t)) + '</div>' +
+      '<button type="button" title="Retirer" onclick="retirerArticle(' + codeJs + ')">✕</button></div>';
+  }).join('');
+  if (prixConnus && total > 0) {
+    const eco = totalStd - total;
+    box.innerHTML += '<div class="cat-sel-recap">Total TTC : <strong>' + fmtDT(total) + '</strong>' +
+      (eco > 0.0005 ? ' · vous économisez <b>' + fmtDT(eco) + '</b> (-' + (eco / totalStd * 100).toFixed(1).replace('.', ',') + ' %) par rapport au prix standard' : '') + '</div>';
+  }
 }
 
 function creerListePrix() {
@@ -775,7 +824,7 @@ function creerListePrix() {
   btn.disabled = true;
   btn.textContent = '⏳ Création…';
   msg.innerHTML = '';
-  catPost('creer_liste_prix', { articles: JSON.stringify(CAT.selection.map(s => ({ item_code: s.item_code }))) })
+  catPost('creer_liste_prix', { articles: JSON.stringify(CAT.selection.map(s => ({ item_code: s.item_code, qte: Math.max(1, parseInt(s.qte, 10) || 1) }))) })
     .then(r => {
       msg.innerHTML = '<div class="cat-ok">✅ Liste <strong>' + esc(r.name) + '</strong> créée (' + r.nb_articles + ' article' + (r.nb_articles > 1 ? 's' : '') + '). ' +
         '<a href="' + esc(r.pdf_url) + '" target="_blank" rel="noopener">📄 Ouvrir le PDF</a></div>';

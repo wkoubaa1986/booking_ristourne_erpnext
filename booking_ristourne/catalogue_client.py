@@ -32,7 +32,7 @@ from collections import defaultdict
 import frappe
 import requests
 from frappe import _
-from frappe.utils import flt, today
+from frappe.utils import cint, flt, today
 
 PRIX_STANDARD = "Vente standard"
 TVA_PAR_DEFAUT = 19.0
@@ -739,18 +739,21 @@ def familles_articles(token):
     ]
 
 
-def _articles_demandes(articles) -> list[str]:
+def _articles_demandes(articles) -> dict[str, int]:
+    """{item_code: quantité} dans l'ordre reçu. articles : JSON [{item_code, qte}, …] ou ["CODE", …]."""
     if isinstance(articles, str):
         try:
             articles = json.loads(articles)
         except ValueError:
             frappe.throw(_("Liste d'articles illisible."))
-    codes: list[str] = []
+    codes: dict[str, int] = {}
     for a in articles or []:
         code = a.get("item_code") if isinstance(a, dict) else a
         code = (code or "").strip()
-        if code and code not in codes:
-            codes.append(code)
+        if not code:
+            continue
+        qte = max(cint(a.get("qte") or a.get("qty")) if isinstance(a, dict) else 0, 1)
+        codes[code] = codes.get(code, 0) + qte  # le même article deux fois = quantités cumulées
     if not codes:
         frappe.throw(_("Ajoutez au moins un article à votre liste."))
     if len(codes) > ARTICLES_MAX_PAR_LISTE:
@@ -759,7 +762,9 @@ def _articles_demandes(articles) -> list[str]:
 
 
 def _lignes_liste(codes: list[str], price_list: str) -> list[dict]:
-    """Fiches prix des articles simples et variantes demandés (jamais un modèle)."""
+    """Fiches prix des articles simples et variantes demandés (jamais un modèle), avec les
+    paliers de remise par quantité, regroupées par famille (ordre d'arrivée conservé dans
+    une famille) pour que le PDF n'affiche chaque famille qu'une fois."""
     items = frappe.get_all("Item", filters={"item_code": ["in", codes], "disabled": 0, "is_sales_item": 1,
                                             "has_variants": 0}, fields=CHAMPS_ITEM)
     par_code = {i.item_code: i for i in items}
@@ -767,20 +772,69 @@ def _lignes_liste(codes: list[str], price_list: str) -> list[dict]:
     prix_client = _prix(codes, price_list)
     prix_standard = prix_client if price_list == PRIX_STANDARD else _prix(codes, PRIX_STANDARD)
     tva = _taux_tva(codes)
-    return [_fiche_prix(par_code[c], prix_client, prix_standard, tva, {}) for c in codes]
+    remises = _remises_quantite([{"item_code": c, "item_group": par_code[c].item_group} for c in codes], price_list)
+    fiches = [_fiche_prix(par_code[c], prix_client, prix_standard, tva, remises) for c in codes]
+    ordre = {}
+    for f in fiches:
+        ordre.setdefault(f["item_group"] or "", len(ordre))
+    return sorted(fiches, key=lambda f: ordre[f["item_group"] or ""])
+
+
+def _palier_pour(paliers: list[dict], qte: int) -> tuple[dict | None, dict | None]:
+    """(palier atteint pour cette quantité, prochain palier) parmi [{min_qty, pct}] triés."""
+    atteint = None
+    prochain = None
+    for p in paliers or []:
+        if flt(p["min_qty"]) <= qte:
+            if not atteint or flt(p["pct"]) > flt(atteint["pct"]):
+                atteint = p
+        elif prochain is None:
+            prochain = p
+    return atteint, prochain
+
+
+def _texte_palier(p: dict | None) -> str:
+    return "" if not p else "-%s %% dès %s" % (_fmt_nombre(p["pct"]), _fmt_nombre(p["min_qty"]))
+
+
+def _ligne_document(d: dict, qte: int) -> dict:
+    """Ligne « Articles doc » d'une fiche prix pour une quantité : prix unitaire du client,
+    prix standard et remise, palier de quantité atteint / suivant, total TTC remisé."""
+    atteint, prochain = _palier_pour(d.get("remises_quantite"), qte)
+    total = None
+    if d["prix_ttc"] is not None:
+        total = round(flt(d["prix_ttc"]) * qte * (1 - flt(atteint["pct"]) / 100 if atteint else 1), 3)
+    return {
+        "articles": d["item_code"],
+        "group_articles": d["item_group"],
+        "nom_article": d["item_name"],
+        "unité": d["stock_uom"],
+        "marque": d["brand"],
+        "tva": _fmt_nombre(d["tva"]),
+        "prix_ht": _fmt_nombre(d["prix_ht"]),
+        "prix_ttc": _fmt_nombre(d["prix_ttc"]),
+        "rem": 0,
+        "custom_quantite": qte,
+        "custom_prix_standard": _fmt_nombre(d["prix_standard_ttc"]) if d.get("remise_pct") else "",
+        "custom_remise_standard": _fmt_nombre(d["remise_pct"]) if d.get("remise_pct") else "",
+        "custom_remise_quantite": _texte_palier(atteint),
+        "custom_prochain_palier": _texte_palier(prochain),
+        "custom_total_ttc": _fmt_nombre(total),
+    }
 
 
 @frappe.whitelist(allow_guest=True)
 def creer_liste_prix(token, articles):
     """Crée et soumet une « Liste prix documents » pour le client, avec ses prix.
 
-    articles : JSON [{item_code}, …] ou ["CODE", …] — articles simples ou variantes.
+    articles : JSON [{item_code, qte}, …] ou ["CODE", …] — articles simples ou variantes ;
+    la quantité (1 par défaut) sert à montrer la remise par quantité atteinte et la suivante.
     -> {name, nb_articles, pdf_url}
     """
     customer = _client_du_token(token)
-    codes = _articles_demandes(articles)
+    quantites = _articles_demandes(articles)
     price_list = liste_de_prix_du_client(customer)
-    details = _lignes_liste(codes, price_list)
+    details = _lignes_liste(list(quantites), price_list)
     if not details:
         frappe.throw(_("Aucun de ces articles n'est disponible à la vente."))
 
@@ -796,20 +850,7 @@ def creer_liste_prix(token, articles):
         "custom_client": customer,
         "génrer_automatique": 0,
         "group_articles": [{"goup_articles": g} for g in groupes],
-        "liste_articles": [
-            {
-                "articles": d["item_code"],
-                "group_articles": d["item_group"],
-                "nom_article": d["item_name"],
-                "unité": d["stock_uom"],
-                "marque": d["brand"],
-                "tva": _fmt_nombre(d["tva"]),
-                "prix_ht": _fmt_nombre(d["prix_ht"]),
-                "prix_ttc": _fmt_nombre(d["prix_ttc"]),
-                "rem": 0,
-            }
-            for d in details
-        ],
+        "liste_articles": [_ligne_document(d, quantites[d["item_code"]]) for d in details],
     })
     doc.flags.ignore_permissions = True
     doc.insert(ignore_permissions=True)

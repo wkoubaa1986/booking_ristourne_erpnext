@@ -278,13 +278,16 @@ fixtures = [
     {
         "doctype": "Custom Field",
         "filters": [
-            ["dt", "in", ["Customer", "Sales Order", "Liste prix documents"]],
+            ["dt", "in", ["Customer", "Sales Order", "Liste prix documents", "Articles doc"]],
             ["fieldname", "in", [
                 "custom_autoriser_acces_fiche_client",
                 "custom_fiche_client_token",
                 "custom_ristourne_disponible",
                 "custom_appliquer_ristourne",
                 "custom_client",
+                # lignes de « Liste prix client » (fiche client) : quantité, remises, total
+                "custom_quantite", "custom_prix_standard", "custom_remise_standard",
+                "custom_remise_quantite", "custom_prochain_palier", "custom_total_ttc",
             ]],
         ],
     },
