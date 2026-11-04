@@ -25,9 +25,12 @@ Configuration (site_config.json) :
 
 from __future__ import annotations
 
+import html
 import json
 import re
+import unicodedata
 from collections import defaultdict
+from urllib.parse import urlencode
 
 import frappe
 import requests
@@ -185,6 +188,11 @@ def _appeler_product_search(query: str, limit: int, item_group: str | None) -> l
 
 
 PHOTO_TAILLE_MAX = 8 * 1024 * 1024
+PHOTO_DELAI_CONNEXION = 3  # s : un service arrêté refuse tout de suite, un hôte injoignable ne fait pas attendre 30 s
+# Réponses qui disent « cette photo-là ne va pas », pas « le service est en panne ».
+PHOTO_REFUSEE_HTTP = (400, 413, 415, 422)
+MSG_PHOTO_INDISPONIBLE = "La recherche par photo est momentanément indisponible."
+MSG_PHOTO_ILLISIBLE = "Cette photo n'a pas pu être analysée. Essayez une photo plus nette, en JPEG ou PNG."
 PHOTO_TYPES = ("image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif")
 
 
@@ -194,10 +202,20 @@ def _appeler_product_search_photo(image: bytes, nom: str, content_type: str, que
 
     -> (codes classés, description automatique de la photo). Lève ValidationError si le
     service n'est pas configuré ou ne répond pas : une photo n'a pas de repli ERPNext.
+
+    ⚠️ LA PHOTO PASSE OUTRE LE MARQUAGE « HORS SERVICE ». Ce marquage de 60 s évite à la recherche
+    texte d'attendre un service mort à chaque frappe, et il est posé dès que /search dépasse ses 6 s.
+    Il refusait donc la photo pendant une minute après un simple hoquet de la recherche texte, service
+    pourtant en marche. La photo est un geste unique et volontaire : elle tente toujours sa chance, avec
+    un délai de connexion court pour qu'un service arrêté échoue tout de suite.
+
+    ⚠️ UNE PHOTO REFUSÉE N'EST PAS UNE PANNE. Une réponse « image illisible » (PHOTO_REFUSEE_HTTP) ne
+    marque pas le service hors service : sinon une seule photo illisible faisait basculer la recherche
+    texte de TOUS les clients sur la recherche simple pendant une minute.
     """
     url = _url_service()
-    if not url or _service_marque_hs():
-        frappe.throw(_("La recherche par photo n'est pas disponible pour le moment."))
+    if not url:
+        frappe.throw(_(MSG_PHOTO_INDISPONIBLE))
     donnees = {"limit": str(limit)}
     if query:
         donnees["query"] = query
@@ -208,21 +226,34 @@ def _appeler_product_search_photo(image: bytes, nom: str, content_type: str, que
             f"{url}/search/upload",
             files={"image": (nom or "photo.jpg", image, content_type or "image/jpeg")},
             data=donnees,
-            timeout=flt(frappe.conf.get("product_search_photo_timeout")) or 30,
+            timeout=(PHOTO_DELAI_CONNEXION, flt(frappe.conf.get("product_search_photo_timeout")) or 30),
         )
+    except Exception as exc:  # connexion refusée, hôte inconnu, délai dépassé
+        _photo_service_en_panne(url, exc)
+    statut = getattr(reponse, "status_code", None)
+    if isinstance(statut, int) and statut in PHOTO_REFUSEE_HTTP:
+        frappe.log_error(title="Fiche client : photo refusée par product-search",
+                         message=f"{url}/search/upload\nHTTP {statut}\n{(reponse.text or '')[:500]}")
+        frappe.throw(_(MSG_PHOTO_ILLISIBLE))
+    try:
         reponse.raise_for_status()
         corps = reponse.json()
-    except Exception as exc:
-        _marquer_service_hs(str(exc))
-        frappe.log_error(title="Fiche client : product-search photo injoignable",
-                         message=f"{url}/search/upload\n{exc}")
-        frappe.throw(_("La recherche par photo n'est pas disponible pour le moment."))
+    except Exception as exc:  # 5xx, JSON invalide
+        _photo_service_en_panne(url, exc)
     codes = []
     for r in corps.get("results") or []:
         code = (r or {}).get("item_code")
         if code and code not in codes:
             codes.append(code)
     return codes, corps.get("auto_description") or None
+
+
+def _photo_service_en_panne(url: str, exc: Exception):
+    """Le service ne répond pas : marqué hors service (la recherche texte bascule), erreur au client."""
+    _marquer_service_hs(str(exc))
+    frappe.log_error(title="Fiche client : product-search photo injoignable",
+                     message=f"{url}/search/upload\n{exc}")
+    frappe.throw(_(MSG_PHOTO_INDISPONIBLE))
 
 
 def _fichier_photo() -> tuple[bytes, str, str]:
@@ -460,18 +491,36 @@ def _taux_tva(item_codes: list[str]) -> dict[str, float]:
     return {r.item_code: flt(r.tax_rate) for r in rows}
 
 
-def _remises_quantite(items: list[dict], price_list: str) -> dict[str, list[dict]]:
-    """Paliers de remise (Pricing Rule « Discount Percentage ») valables pour la
-    liste de prix du client, par article : [{min_qty, pct}, …] triés par quantité.
+def _portee(mixte, apply_on: str, titre: str, groupes: list, codes: list):
+    """Ce que couvre le SEUIL d'une règle, en clair ; None = seuil compté article par article. Fonction pure.
 
-    Une règle s'applique par code article ou par groupe (le groupe de l'article ou
-    un de ses ancêtres). Les règles réservées à un autre groupe/client sont exclues.
+    ⚠️ « CONDITIONS MIXTES » : LE SEUIL SE COMPTE SUR TOUT CE QUE LA RÈGLE COUVRE. ERPNext additionne alors les
+    quantités de TOUS les articles de la règle (toutes variantes, tous sous-groupes) : 6 osmoseurs d'un modèle et
+    5 d'un autre font 11, et « -5 % dès 10 » vaut pour les deux. C'est le cas de toutes les remises B2B
+    (« Osmoseurs Domestiques », cartouches PP) : le message doit dire sur QUOI porte le compte (04/11/2026).
+    """
+    if not cint(mixte):
+        return None
+    if apply_on == "Item Group" and groupes:
+        return "tous « %s » confondus" % " / ".join(groupes)
+    if apply_on == "Item Code" and len(codes or []) > 1:
+        return "%d articles de l'offre « %s » confondus" % (len(codes), titre or "remise")
+    return None
+
+
+def _remises_quantite(items: list[dict], price_list: str) -> dict[str, list[dict]]:
+    """Paliers de remise (Pricing Rule « Discount Percentage ») valables pour la liste de prix du client, par
+    article : [{min_qty, max_qty, pct, regle, mixte, portee}, …] triés par quantité — un palier par règle.
+
+    Une règle s'applique par code article ou par groupe (le groupe de l'article ou un de ses ancêtres). Les
+    règles réservées à un client sont exclues. `mixte` / `portee` : cf. _portee (seuil cumulé sur la règle).
     """
     if not items:
         return {}
     regles = frappe.db.sql(
         """
-        SELECT p.name, p.apply_on, p.min_qty, p.max_qty, p.discount_percentage, p.customer_group
+        SELECT p.name, p.title, p.apply_on, p.min_qty, p.max_qty, p.discount_percentage, p.customer_group,
+               p.mixed_conditions
         FROM `tabPricing Rule` p
         WHERE p.disable = 0 AND p.selling = 1 AND p.price_or_product_discount = 'Price'
           AND p.rate_or_discount = 'Discount Percentage' AND p.discount_percentage > 0
@@ -488,12 +537,18 @@ def _remises_quantite(items: list[dict], price_list: str) -> dict[str, list[dict
         return {}
     noms = [r.name for r in regles]
     par_code = defaultdict(set)
+    codes_regle = defaultdict(list)
     for r in frappe.get_all("Pricing Rule Item Code", filters={"parent": ["in", noms]}, fields=["parent", "item_code"]):
         par_code[r.item_code].add(r.parent)
+        codes_regle[r.parent].append(r.item_code)
     par_groupe = defaultdict(set)
+    groupes_regle = defaultdict(list)
     for r in frappe.get_all("Pricing Rule Item Group", filters={"parent": ["in", noms]}, fields=["parent", "item_group"]):
         par_groupe[r.item_group].add(r.parent)
+        groupes_regle[r.parent].append(r.item_group)
     regle = {r.name: r for r in regles}
+    portee = {n: _portee(r.mixed_conditions, r.apply_on, r.title, groupes_regle[n], codes_regle[n])
+              for n, r in regle.items()}
 
     ancetres: dict[str, list[str]] = {}
 
@@ -511,13 +566,16 @@ def _remises_quantite(items: list[dict], price_list: str) -> dict[str, list[dict
         noms_regles = set(par_code.get(it["item_code"], ()))
         for g in _ancetres(it["item_group"]) if it.get("item_group") else []:
             noms_regles |= par_groupe.get(g, set())
-        paliers = {}
-        for n in noms_regles:
-            r = regle[n]
-            qte = flt(r.min_qty) or 1
-            paliers[qte] = max(paliers.get(qte, 0), flt(r.discount_percentage))
+        paliers = [{
+            "min_qty": flt(regle[n].min_qty) or 1,
+            "max_qty": flt(regle[n].max_qty) or None,
+            "pct": flt(regle[n].discount_percentage),
+            "regle": n,
+            "mixte": 1 if portee[n] else 0,
+            "portee": portee[n],
+        } for n in noms_regles]
         if paliers:
-            out[it["item_code"]] = [{"min_qty": q, "pct": p} for q, p in sorted(paliers.items())]
+            out[it["item_code"]] = sorted(paliers, key=lambda p: (p["min_qty"], -p["pct"], p["regle"]))
     return out
 
 
@@ -525,6 +583,92 @@ def _texte_court(html: str | None, longueur: int = 160) -> str:
     texte = re.sub(r"<[^>]+>", " ", html or "")
     texte = re.sub(r"\s+", " ", texte).strip()
     return texte if len(texte) <= longueur else texte[: longueur - 1].rstrip() + "…"
+
+
+# ---------------------------------------------------------------------------
+# Lien vers la page de l'article sur le site (WooCommerce, via woocommerce_fusion)
+# ---------------------------------------------------------------------------
+#
+# ⚠️ UNE VARIATION N'A PAS DE PAGE. `?p=<id de variation>` répond 404 sur le site : seule la page du MODÈLE
+# existe. On ouvre donc le modèle (`?p=<id du modèle>`, que WordPress redirige vers sa page en GARDANT les
+# paramètres) avec la variante présélectionnée par `attribute_<nom>=<valeur>` — vérifié le 04/11/2026 sur
+# l'osmoseur 2448 : les trois listes du site arrivent sélectionnées. Les attributs du site portent les noms
+# et valeurs d'ERPNext (synchronisés par woocommerce_fusion) ; le nom du paramètre est le nom de l'attribut
+# passé par sanitize_title() de WordPress (cf. _slug_wordpress).
+
+# Ce que sanitize_title_with_dashes() (contexte « save ») TRANSFORME avant de supprimer le reste : la barre et
+# les tirets typographiques deviennent des tirets (« L/h » -> « l-h », pas « lh »), × devient x.
+_REMPLACEMENTS = {"œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE", "ß": "ss", "×": "x",
+                  "/": "-", "\u2013": "-", "\u2014": "-", "\u2011": "-", "\xa0": "-"}
+
+
+def _slug_wordpress(texte: str) -> str:
+    """sanitize_title() de WordPress : sans accents, minuscules, tirets. Fonction pure.
+    « Système de mélange (eau osmosée/ eau filtrée) » -> « systeme-de-melange-eau-osmosee-eau-filtree »."""
+    t = "".join(_REMPLACEMENTS.get(c, c) for c in (texte or ""))
+    t = unicodedata.normalize("NFKD", t).encode("ascii", "ignore").decode("ascii").lower().replace(".", "-")
+    t = re.sub(r"[^a-z0-9 _-]", "", t)
+    t = re.sub(r"\s+", "-", t)
+    return re.sub(r"-+", "-", t).strip("-")
+
+
+def lien_produit(base: str, woocommerce_id) -> str | None:
+    """Page d'un article simple ou d'un modèle. Fonction pure."""
+    if not base or not woocommerce_id:
+        return None
+    return "%s/?p=%s" % (base.rstrip("/"), woocommerce_id)
+
+
+def lien_variante(base: str, id_modele, attributs: dict) -> str | None:
+    """Page du modèle, la variante présélectionnée. Fonction pure."""
+    lien = lien_produit(base, id_modele)
+    if not lien:
+        return None
+    params = [("attribute_" + _slug_wordpress(nom), valeur) for nom, valeur in sorted((attributs or {}).items()) if valeur]
+    return lien + ("&" + urlencode(params) if params else "")
+
+
+def _ids_site(codes: list[str]) -> dict:
+    """{code article: (url du site, id WooCommerce)} pour les articles publiés via woocommerce_fusion."""
+    if not codes or not frappe.db.table_exists("Item WooCommerce Server"):
+        return {}
+    sites = {s.name: s.woocommerce_server_url for s in frappe.get_all(
+        "WooCommerce Server", fields=["name", "woocommerce_server_url"]) if s.woocommerce_server_url}
+    out = {}
+    for r in frappe.get_all("Item WooCommerce Server",
+                            filters={"parenttype": "Item", "parent": ["in", list(codes)], "enabled": 1},
+                            fields=["parent", "woocommerce_server", "woocommerce_id"], order_by="idx"):
+        if r.woocommerce_id and sites.get(r.woocommerce_server) and r.parent not in out:
+            out[r.parent] = (sites[r.woocommerce_server], r.woocommerce_id)
+    return out
+
+
+CLE_APERCU_SITE = "fiche_client_apercu_site:"
+DUREE_APERCU_SITE = 3600   # s : la fiche produit du site change rarement
+IMAGES_APERCU_MAX = 8
+
+
+def apercu_depuis_store(produit: dict, lien_repli: str = None, nettoyer=None) -> dict:
+    """Ce que la popup « Voir sur le site » affiche, tiré d'une réponse de l'API publique WooCommerce
+    (`/wp-json/wc/store/v1/products/<id>`, produit OU variation). Fonction pure (`nettoyer` injectable).
+
+    Le HTML vient de notre site mais il est nettoyé quand même avant d'entrer dans la page."""
+    nettoyer = nettoyer or (lambda h: h)
+    images = []
+    for i in (produit.get("images") or [])[:IMAGES_APERCU_MAX]:
+        if i.get("src"):
+            images.append({"src": i["src"], "vignette": i.get("thumbnail") or i["src"],
+                           "alt": html.unescape(i.get("alt") or "")})
+    resume = (produit.get("short_description") or "").strip()
+    description = (produit.get("description") or "").strip()
+    return {
+        "nom": html.unescape(produit.get("name") or ""),
+        "variation": html.unescape(produit.get("variation") or "") or None,
+        "lien": produit.get("permalink") or lien_repli,
+        "images": images,
+        "resume": nettoyer(resume) if resume else None,
+        "description": nettoyer(description) if description else None,
+    }
 
 
 CHAMPS_ITEM = ["item_code", "item_name", "item_group", "stock_uom", "brand", "image", "description",
@@ -625,16 +769,24 @@ def _details_articles(item_codes: list[str], price_list: str) -> list[dict]:
     for v in variantes:
         variantes_par_modele[v.variant_of].append(v)
 
+    sur_le_site = _ids_site(cles + [v.item_code for v in variantes])
+
     out = []
     for c in cles:
         it = par_code[c]
         if not it.has_variants:
-            out.append(_fiche_prix(it, prix_client, prix_standard, tva, remises))
+            fiche = _fiche_prix(it, prix_client, prix_standard, tva, remises)
+            fiche["lien_site"] = lien_produit(*sur_le_site.get(c, (None, None)))
+            out.append(fiche)
             continue
+        base_modele, id_modele = sur_le_site.get(c, (None, None))
         fiches = []
         for v in variantes_par_modele.get(c, []):
             f = _fiche_prix(v, prix_client, prix_standard, tva, remises)
             f["attributs"] = attributs_variantes.get(v.item_code, {})
+            # Une variante absente du site n'y a pas de page : pas de lien (la carte garde celui du modèle).
+            f["lien_site"] = (lien_variante(base_modele, id_modele, f["attributs"])
+                              if v.item_code in sur_le_site else None)
             fiches.append(f)
         attributs = []
         for nom in attributs_modele.get(c, []):
@@ -653,6 +805,7 @@ def _details_articles(item_codes: list[str], price_list: str) -> list[dict]:
             "remise_max": max((f["remise_pct"] for f in fiches), default=0.0),
             "attributs": attributs,
             "variantes": fiches,
+            "lien_site": lien_produit(base_modele, id_modele),
         })
         out.append(carte)
     return out
@@ -720,6 +873,48 @@ def rechercher_par_photo(token, query=None, item_group=None, limit=20):
 
 
 @frappe.whitelist(allow_guest=True)
+def apercu_site(token, item_code):
+    """Fiche de l'article sur le site, pour la popup « Voir sur le site » de la fiche client.
+
+    ⚠️ LA PAGE DU SITE NE PEUT PAS S'AFFICHER DANS LA FICHE : le site interdit d'être intégré ailleurs
+    (X-Frame-Options: SAMEORIGIN, constaté le 04/11/2026). On lit donc son API publique (sans clé) et la fiche
+    client affiche photos et description dans sa propre popup, avec un lien vers la page complète. Une
+    variation a son entrée dans cette API (photo, description, options) : c'est elle qu'on lit, pas le modèle.
+    """
+    _client_du_token(token)
+    item_code = (item_code or "").strip()
+    base, woocommerce_id = _ids_site([item_code]).get(item_code, (None, None))
+    if not woocommerce_id:
+        frappe.throw(_("Cet article n'est pas présenté sur le site."))
+    attributs = {}
+    modele = frappe.db.get_value("Item", item_code, "variant_of")
+    lien = lien_produit(base, woocommerce_id)
+    if modele:
+        base_modele, id_modele = _ids_site([modele]).get(modele, (None, None))
+        attributs = {a.attribute: a.attribute_value for a in frappe.get_all(
+            "Item Variant Attribute", filters={"parent": item_code, "parenttype": "Item"},
+            fields=["attribute", "attribute_value"])}
+        lien = lien_variante(base_modele, id_modele, attributs) or lien
+
+    cle = CLE_APERCU_SITE + str(woocommerce_id)
+    produit = frappe.cache().get_value(cle)
+    if not produit:
+        try:
+            reponse = requests.get("%s/wp-json/wc/store/v1/products/%s" % (base.rstrip("/"), woocommerce_id),
+                                   timeout=(3, 8))
+            reponse.raise_for_status()
+            produit = reponse.json()
+        except Exception as exc:
+            frappe.log_error(title="Fiche client : fiche du site illisible", message="%s %s\n%s" % (base, woocommerce_id, exc))
+            frappe.throw(_("La fiche du site n'est pas disponible pour le moment."))
+        frappe.cache().set_value(cle, produit, expires_in_sec=DUREE_APERCU_SITE)
+
+    from frappe.utils.html_utils import sanitize_html
+
+    return apercu_depuis_store(produit, lien_repli=lien, nettoyer=sanitize_html)
+
+
+@frappe.whitelist(allow_guest=True)
 def familles_articles(token):
     """Familles principales du catalogue, pour filtrer la recherche."""
     _client_du_token(token)
@@ -780,12 +975,29 @@ def _lignes_liste(codes: list[str], price_list: str) -> list[dict]:
     return sorted(fiches, key=lambda f: ordre[f["item_group"] or ""])
 
 
-def _palier_pour(paliers: list[dict], qte: int) -> tuple[dict | None, dict | None]:
-    """(palier atteint pour cette quantité, prochain palier) parmi [{min_qty, pct}] triés."""
+def _cumuls_mixtes(lignes: list[dict], quantites: dict) -> dict:
+    """{règle à seuil cumulé : quantité totale des articles demandés qu'elle couvre}. Fonction pure."""
+    cumuls = defaultdict(float)
+    for d in lignes or []:
+        for n in {p.get("regle") for p in d.get("remises_quantite") or [] if p.get("mixte") and p.get("regle")}:
+            cumuls[n] += flt(quantites.get(d["item_code"]))
+    return dict(cumuls)
+
+
+def _quantite_palier(p: dict, qte, cumuls) -> float:
+    """La quantité qui compte pour ce palier : le cumul de sa règle si son seuil est cumulé, sinon la ligne."""
+    if p.get("mixte") and cumuls and p.get("regle") in cumuls:
+        return flt(cumuls[p["regle"]])
+    return flt(qte)
+
+
+def _palier_pour(paliers: list[dict], qte: int, cumuls: dict = None) -> tuple[dict | None, dict | None]:
+    """(palier atteint pour cette quantité, prochain palier) parmi les paliers triés. `cumuls` (cf.
+    _cumuls_mixtes) : quantités totales par règle à seuil cumulé ; sans lui, tout se compte à la ligne."""
     atteint = None
     prochain = None
     for p in paliers or []:
-        if flt(p["min_qty"]) <= qte:
+        if flt(p["min_qty"]) <= _quantite_palier(p, qte, cumuls):
             if not atteint or flt(p["pct"]) > flt(atteint["pct"]):
                 atteint = p
         elif prochain is None:
@@ -794,13 +1006,16 @@ def _palier_pour(paliers: list[dict], qte: int) -> tuple[dict | None, dict | Non
 
 
 def _texte_palier(p: dict | None) -> str:
-    return "" if not p else "-%s %% dès %s" % (_fmt_nombre(p["pct"]), _fmt_nombre(p["min_qty"]))
+    if not p:
+        return ""
+    texte = "-%s %% dès %s" % (_fmt_nombre(p["pct"]), _fmt_nombre(p["min_qty"]))
+    return texte + (" (%s)" % p["portee"] if p.get("portee") else "")
 
 
-def _ligne_document(d: dict, qte: int) -> dict:
+def _ligne_document(d: dict, qte: int, cumuls: dict = None) -> dict:
     """Ligne « Articles doc » d'une fiche prix pour une quantité : prix unitaire du client,
     prix standard et remise, palier de quantité atteint / suivant, total TTC remisé."""
-    atteint, prochain = _palier_pour(d.get("remises_quantite"), qte)
+    atteint, prochain = _palier_pour(d.get("remises_quantite"), qte, cumuls)
     total = None
     if d["prix_ttc"] is not None:
         total = round(flt(d["prix_ttc"]) * qte * (1 - flt(atteint["pct"]) / 100 if atteint else 1), 3)
@@ -842,6 +1057,8 @@ def creer_liste_prix(token, articles):
     for d in details:
         if d["item_group"] and d["item_group"] not in groupes:
             groupes.append(d["item_group"])
+    # Seuils cumulés (conditions mixtes) : 6 + 5 osmoseurs domestiques = 11, le palier « dès 10 » vaut pour tous.
+    cumuls = _cumuls_mixtes(details, quantites)
 
     doc = frappe.get_doc({
         "doctype": "Liste prix documents",
@@ -850,7 +1067,7 @@ def creer_liste_prix(token, articles):
         "custom_client": customer,
         "génrer_automatique": 0,
         "group_articles": [{"goup_articles": g} for g in groupes],
-        "liste_articles": [_ligne_document(d, quantites[d["item_code"]]) for d in details],
+        "liste_articles": [_ligne_document(d, quantites[d["item_code"]], cumuls) for d in details],
     })
     doc.flags.ignore_permissions = True
     doc.insert(ignore_permissions=True)

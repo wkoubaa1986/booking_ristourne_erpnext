@@ -145,10 +145,18 @@
     #catalogue { text-align:left; margin:12px 0 4px 0; }
     .cat-box { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:12px; margin-bottom:10px; box-shadow:0 1px 4px rgba(0,0,0,.05); }
     .cat-box h3 { margin:0 0 8px 0; font-size:16px; }
+    /* ⚠️ `min-width:0` : sans lui, un champ en flex garde sa largeur intrinsèque (~20 caractères) et pousse
+       le bouton photo HORS de la carte sur un téléphone (constaté le 04/11/2026 à 400 px de large). */
     .cat-search { display:flex; gap:8px; }
-    .cat-search input { flex:1; padding:11px 14px; font-size:16px; border:1.5px solid #d1d5db; border-radius:8px; outline:none; }
+    .cat-search input { flex:1; min-width:0; padding:11px 14px; font-size:16px; border:1.5px solid #d1d5db; border-radius:8px; outline:none; }
     .cat-search input:focus { border-color:#007bff; }
-    .cat-search button { padding:0 16px; border:none; border-radius:8px; background:#007bff; color:#fff; font-weight:700; cursor:pointer; }
+    .cat-search button { flex:none; min-height:44px; padding:0 16px; border:none; border-radius:8px; background:#007bff; color:#fff; font-weight:700; font-size:14px; cursor:pointer; white-space:nowrap; }
+    /* Recherche par photo DANS la barre, comme Google Lens / Alibaba : l'icône est posée à droite du champ,
+       qui lui laisse sa place (padding-right). Le champ garde min-width:0 : sans lui, il pousse « Chercher »
+       hors de la carte sur un téléphone (constaté le 04/11/2026 à 400 px). */
+    .cat-champ { position:relative; flex:1; min-width:0; }
+    .cat-champ input { width:100%; box-sizing:border-box; padding-right:50px; }
+    .cat-champ.depot input { border-color:#007bff; background:#eff6ff; }
     .cat-familles { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
     .cat-familles .group-btn { font-size:12px; }
     .cat-status { font-size:12px; color:#6b7280; margin:8px 0 4px 0; min-height:16px; }
@@ -162,12 +170,38 @@
     .cat-name { font-weight:700; font-size:14px; }
     .cat-meta { font-size:11px; color:#6b7280; margin-top:2px; }
     .cat-desc { font-size:12px; color:#4b5563; margin-top:3px; }
+    .cat-site { display:inline-flex; align-items:center; gap:4px; margin-top:5px; font-size:12px; font-weight:700; color:#007bff; text-decoration:none; }
+    .cat-site:hover { text-decoration:underline; }
+    .cat-site[hidden] { display:none; }
+    /* Popup « Voir sur le site » : créée à l'ouverture, RETIRÉE de la page à la fermeture. */
+    body.cat-modal-ouvert { overflow:hidden; }
+    .cat-modal-fond { position:fixed; inset:0; z-index:1000; background:rgba(17,24,39,.55); display:flex; align-items:center; justify-content:center; padding:16px; }
+    .cat-modal { background:#fff; border-radius:12px; width:100%; max-width:720px; max-height:88vh; display:flex; flex-direction:column; box-shadow:0 10px 40px rgba(0,0,0,.25); text-align:left; }
+    .cat-modal-tete { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid #e5e7eb; font-size:12px; color:#6b7280; }
+    .cat-modal-x { border:none; background:#f3f4f6; border-radius:50%; width:34px; height:34px; cursor:pointer; font-size:15px; flex:none; }
+    .cat-modal-corps { padding:14px; overflow:auto; }
+    .cat-modal-pied { display:flex; gap:8px; justify-content:flex-end; padding:10px 14px; border-top:1px solid #e5e7eb; }
+    .cat-modal-pied .cat-btn { text-decoration:none; text-align:center; }
+    .cat-modal-principale { width:100%; max-height:320px; object-fit:contain; background:#fff; display:block; }
+    .cat-modal-vignettes { display:flex; gap:6px; overflow-x:auto; margin-top:6px; }
+    .cat-modal-vignettes img { width:52px; height:52px; object-fit:cover; border:1px solid #e5e7eb; border-radius:6px; cursor:pointer; flex:none; }
+    .cat-modal-nom { font-weight:700; font-size:16px; margin:10px 0 4px; }
+    .cat-modal-variation { font-size:12px; color:#4b5563; margin-bottom:8px; }
+    .cat-modal-texte { font-size:13px; color:#374151; line-height:1.5; overflow-wrap:anywhere; }
+    .cat-modal-texte img, .cat-modal-texte iframe { max-width:100%; height:auto; }
+    .cat-modal-texte table { font-size:12px; }
+    .cat-modal-texte h2, .cat-modal-texte h3 { font-size:14px; margin:12px 0 4px; }
+    @media (max-width: 600px) {
+      .cat-modal-fond { padding:0; align-items:stretch; }
+      .cat-modal { max-width:none; max-height:none; height:100%; border-radius:0; }
+      .cat-modal-pied .cat-btn { flex:1; }
+    }
     .cat-price { text-align:right; flex:none; min-width:120px; }
     .cat-ttc { font-size:16px; font-weight:700; color:#111827; }
     .cat-ttc.demande { font-size:12px; color:#92400e; }
     .cat-std { font-size:11px; color:#6b7280; }
     .cat-std b { color:#166534; }
-    .cat-add { margin-top:6px; padding:6px 12px; border:1.5px solid #007bff; border-radius:8px; background:#fff; color:#007bff; font-weight:700; cursor:pointer; font-size:13px; }
+    .cat-add { margin-top:6px; padding:6px 12px; border:1.5px solid #007bff; border-radius:8px; background:#fff; color:#007bff; font-weight:700; cursor:pointer; font-size:13px; white-space:nowrap; flex:none; }
     .cat-add.ok { background:#dcfce7; border-color:#86efac; color:#166534; }
     .cat-sel-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f3f4f6; font-size:13px; }
     .cat-sel-row .cat-sel-name { flex:1; min-width:0; }
@@ -191,8 +225,12 @@
     .cat-liste-row { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid #f3f4f6; font-size:13px; }
     .cat-liste-row a { color:#007bff; font-weight:700; text-decoration:none; white-space:nowrap; }
     .cat-vide { color:#9ca3af; font-size:13px; }
-    .cat-photo-btn { padding:0 14px; border:1.5px solid #d1d5db; border-radius:8px; background:#fff; font-size:18px; cursor:pointer; }
-    .cat-photo-btn:hover { background:#f3f4f6; }
+    .cat-search .cat-photo-btn { position:absolute; top:50%; right:5px; transform:translateY(-50%); width:40px; height:40px; min-height:0; padding:0; border:none; border-radius:50%; background:transparent; color:#007bff; display:flex; align-items:center; justify-content:center; }
+    .cat-search .cat-photo-btn:hover, .cat-search .cat-photo-btn:focus-visible { background:#eff6ff; }
+    .cat-search .cat-photo-btn:disabled { color:#9ca3af; background:transparent; cursor:wait; }
+    #cat-photo-apercu .cat-photo-attente::before { content:""; display:inline-block; width:12px; height:12px; margin-right:6px; vertical-align:-2px; border:2px solid #bfdbfe; border-top-color:#007bff; border-radius:50%; animation:cat-tourne .8s linear infinite; }
+    @keyframes cat-tourne { to { transform:rotate(360deg); } }
+    #cat-photo-apercu .cat-photo-err { color:#991b1b; }
     #cat-photo-apercu { display:flex; align-items:center; gap:10px; margin-top:8px; font-size:12px; color:#4b5563; }
     #cat-photo-apercu:empty { display:none; }
     #cat-photo-apercu img { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #e5e7eb; }
@@ -205,9 +243,16 @@
     .cat-plage { margin-bottom:6px; padding-bottom:6px; border-bottom:1px dashed #d1d5db; }
     .cat-paliers { margin-top:2px; }
     @media (max-width: 600px) {
+      .container { padding:12px; }
+      .cat-search > button { padding:0 12px; }
       .cat-card { flex-wrap:wrap; }
       .cat-price { width:100%; display:flex; justify-content:space-between; align-items:center; text-align:left; }
       .cat-add { margin-top:0; }
+      /* Carte à variantes : le bloc prix (plage + variante choisie, prix standard, remises) est haut. À côté de
+         lui, le bouton se comprimait sur deux lignes et flottait entre les deux (constaté le 04/11/2026) :
+         il passe pleine largeur, SOUS la variante. */
+      .cat-card.modele .cat-price { flex-direction:column; align-items:stretch; }
+      .cat-card.modele .cat-add { width:100%; margin-top:8px; padding:10px 12px; font-size:14px; }
       .cat-btn { width:100%; }
     }
   </style>
@@ -262,10 +307,14 @@
     <div class="cat-box">
       <h3>🔍 Rechercher un article</h3>
       <div class="cat-search">
-        <input id="cat-query" type="search" placeholder="Nom, référence, usage… (ex. pompe osmoseur 600 GPD)" autocomplete="off">
+        <div class="cat-champ" id="cat-champ">
+          <input id="cat-query" type="search" placeholder="Nom, référence, usage… (ex. pompe osmoseur 600 GPD)" autocomplete="off">
+          <button type="button" id="cat-photo-btn" class="cat-photo-btn" title="Rechercher par photo (ou collez / glissez une image)" aria-label="Rechercher par photo" onclick="document.getElementById('cat-photo').click()"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false"><path d="M3.5 8.5A1.5 1.5 0 0 1 5 7h2.2l1.6-2.2h6.4L16.8 7H19a1.5 1.5 0 0 1 1.5 1.5v9A1.5 1.5 0 0 1 19 19H5a1.5 1.5 0 0 1-1.5-1.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12.8" r="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button>
+        </div>
         <button type="button" onclick="lancerRecherche(true)">Chercher</button>
-        <button type="button" class="cat-photo-btn" title="Rechercher à partir d'une photo" onclick="document.getElementById('cat-photo').click()">📷</button>
-        <input id="cat-photo" type="file" accept="image/*" capture="environment" hidden onchange="rechercherParPhoto(this)">
+        <!-- Pas de `capture` : il forçait l'appareil photo sur Android, sans accès aux photos déjà prises
+             (ex. reçue sur WhatsApp). Sans lui, le téléphone propose « Appareil photo » ET la galerie. -->
+        <input id="cat-photo" type="file" accept="image/*" hidden onchange="rechercherParPhoto(this)">
       </div>
       <div id="cat-photo-apercu"></div>
       <div id="cat-familles" class="cat-familles"></div>
@@ -423,6 +472,21 @@ function initCatalogue(customer, token) {
     CAT.timer = setTimeout(() => lancerRecherche(false), 350);
   });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); lancerRecherche(true); } });
+
+  // Comme Google Lens / Alibaba : une image COLLÉE dans le champ ou GLISSÉE dessus lance la recherche par photo.
+  const imageDe = (liste) => Array.from(liste || []).find(f => f && f.type && f.type.startsWith('image/'));
+  input.addEventListener('paste', (e) => {
+    const image = imageDe(e.clipboardData && e.clipboardData.files);
+    if (image) { e.preventDefault(); lancerRecherchePhoto(image); }
+  });
+  const champ = document.getElementById('cat-champ');
+  champ.addEventListener('dragover', (e) => { e.preventDefault(); champ.classList.add('depot'); });
+  champ.addEventListener('dragleave', () => champ.classList.remove('depot'));
+  champ.addEventListener('drop', (e) => {
+    champ.classList.remove('depot');
+    const image = imageDe(e.dataTransfer && e.dataTransfer.files);
+    if (image) { e.preventDefault(); lancerRecherchePhoto(image); }
+  });
 }
 
 function catErreur(data) {
@@ -533,10 +597,21 @@ function lancerRecherche(force) {
 }
 
 function remisesQuantiteHtml(it) {
+  // Une ligne par PORTÉE du seuil : « tous « Osmoseurs Domestiques » confondus » (quantités cumulées sur la
+  // règle, cf. _portee côté serveur) ou « par article ». Le client doit savoir sur quoi se compte la quantité.
   const paliers = (it && it.remises_quantite) || [];
   if (!paliers.length) return '';
-  return '<div class="cat-std cat-paliers">Remise quantité : ' +
-    paliers.map(p => '<b>-' + String(p.pct).replace('.', ',') + ' %</b> dès ' + p.min_qty).join(' · ') + '</div>';
+  const parPortee = new Map();
+  paliers.forEach(p => {
+    const cle = (p.mixte && p.portee) ? p.portee : '';
+    if (!parPortee.has(cle)) parPortee.set(cle, new Map());
+    const seuils = parPortee.get(cle), q = Number(p.min_qty);
+    seuils.set(q, Math.max(seuils.get(q) || 0, Number(p.pct)));
+  });
+  return Array.from(parPortee.entries()).map(([portee, seuils]) =>
+    '<div class="cat-std cat-paliers">Remise quantité' + (portee ? ', ' + esc(portee) : ' (par article)') + ' : ' +
+    Array.from(seuils.entries()).sort((a, b) => a[0] - b[0])
+      .map(([q, pct]) => '<b>-' + String(pct).replace('.', ',') + ' %</b> dès ' + q).join(' · ') + '</div>').join('');
 }
 
 function prixHtml(it) {
@@ -565,7 +640,7 @@ function renderCarte(it) {
     : '<div class="cat-img vide">📦</div>';
   const meta = [it.item_code, it.item_group, it.brand].filter(Boolean).map(esc).join(' · ');
   let corps = '<div class="cat-name">' + esc(it.item_name) + '</div><div class="cat-meta">' + meta + '</div>' +
-    (it.description ? '<div class="cat-desc">' + esc(it.description) + '</div>' : '');
+    (it.description ? '<div class="cat-desc">' + esc(it.description) + '</div>' : '') + lienSiteHtml(it);
   let prix;
 
   if (it.est_modele) {
@@ -615,6 +690,8 @@ function reduirePhoto(file, maxCote) {
       canvas.toBlob(b => resolve(b || file), 'image/jpeg', 0.85);
     };
     img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    // Image que le navigateur ne sait pas décoder et qui ne lève même pas d'erreur : on envoie l'original.
+    setTimeout(() => resolve(file), 8000);
     img.src = url;
   });
 }
@@ -622,14 +699,40 @@ function reduirePhoto(file, maxCote) {
 function rechercherParPhoto(input) {
   const file = input.files && input.files[0];
   input.value = '';
-  if (!file) return;
+  if (file) lancerRecherchePhoto(file);
+}
+
+const PHOTO_DELAI_MAX = 45000;   // ms : au-delà du délai serveur (3 s de connexion + 30 s de réponse)
+
+function lancerRecherchePhoto(file) {
   const status = document.getElementById('cat-status');
   const results = document.getElementById('cat-results');
   const apercu = document.getElementById('cat-photo-apercu');
-  apercu.innerHTML = '<img src="' + URL.createObjectURL(file) + '" alt=""><span>Analyse de la photo…</span>';
+  const bouton = document.getElementById('cat-photo-btn');
+  const vignette = '<img src="' + URL.createObjectURL(file) + '" alt="">';
+  const fermer = '<button type="button" onclick="document.getElementById(\'cat-photo-apercu\').innerHTML=\'\'">✕</button>';
+  apercu.innerHTML = vignette + '<span class="cat-photo-attente">Analyse de la photo…</span>';
   status.textContent = 'Recherche par photo…';
   results.innerHTML = '';
-  CAT.derniere = 'photo:' + Date.now();
+  // Même garde que la recherche texte : si le client tape ou relance pendant l'analyse, la réponse de la
+  // photo arrivée après coup n'écrase pas des résultats plus récents.
+  // ⚠️ MAIS ELLE NE DOIT PAS LAISSER LA VIGNETTE EN « ANALYSE… ». La première version sortait sans rien
+  // toucher : bouton réactivé, vignette figée sur « Analyse de la photo… » (constaté en dev le 04/11/2026).
+  const cle = CAT.derniere = 'photo:' + Date.now();
+  const depassee = () => {
+    if (cle === CAT.derniere) return false;
+    if (apercu.querySelector('.cat-photo-attente')) apercu.innerHTML = '';
+    return true;
+  };
+  if (bouton) bouton.disabled = true;
+  // Compteur visible : le client voit que l'analyse avance (2 à 5 s d'habitude) au lieu d'un texte immobile.
+  const debut = Date.now();
+  const chrono = setInterval(() => {
+    const el = apercu.querySelector('.cat-photo-attente');
+    if (el) el.textContent = 'Analyse de la photo… ' + Math.round((Date.now() - debut) / 1000) + ' s';
+  }, 1000);
+  const arret = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const minuterie = setTimeout(() => { if (arret) arret.abort(); }, PHOTO_DELAI_MAX);
 
   reduirePhoto(file, 1024).then(blob => {
     const body = new FormData();
@@ -641,15 +744,16 @@ function rechercherParPhoto(input) {
     body.append('limit', 20);
     const headers = {};
     if (CSRF_TOKEN) headers['X-Frappe-CSRF-Token'] = CSRF_TOKEN;
-    return fetch(CAT_API + 'rechercher_par_photo', { method: 'POST', headers, body }).then(async r => {
+    return fetch(CAT_API + 'rechercher_par_photo', { method: 'POST', headers, body, signal: arret ? arret.signal : undefined }).then(async r => {
       const data = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(catErreur(data));
       return data.message;
     });
   }).then(r => {
+    if (depassee()) return; // une recherche plus récente a pris le relais
     const items = (r && r.results) || [];
     const desc = r.description_photo ? '<span>Photo reconnue : <b>' + esc(r.description_photo) + '</b></span>' : '<span>Photo analysée</span>';
-    apercu.innerHTML = apercu.querySelector('img').outerHTML + desc + '<button type="button" onclick="document.getElementById(\'cat-photo-apercu\').innerHTML=\'\'">✕</button>';
+    apercu.innerHTML = vignette + desc + fermer;
     if (!items.length) {
       status.innerHTML = 'Aucun article ne ressemble à cette photo.';
       return;
@@ -658,12 +762,137 @@ function rechercherParPhoto(input) {
     CAT.cartes = {};
     results.innerHTML = items.map(renderCarte).join('');
   }).catch(err => {
-    apercu.innerHTML = '';
-    status.textContent = 'Erreur : ' + err.message;
+    if (depassee()) return;
+    if (err && err.name === 'AbortError') {
+      err = new Error('La recherche par photo a pris trop de temps. Réessayez, ou décrivez l’article.');
+    }
+    console.warn('[recherche photo]', err);
+    // La photo n'a pas de repli. Mais si le client a aussi tapé quelque chose, on lui donne au moins
+    // les résultats de ce texte, le message de la photo restant affiché à côté de sa vignette.
+    apercu.innerHTML = vignette + '<span class="cat-photo-err">' + esc(err.message) + '</span>' + fermer;
+    if (document.getElementById('cat-query').value.trim().length >= 2) {
+      lancerRecherche(true);
+    } else {
+      status.textContent = 'Décrivez l’article dans la barre de recherche (nom, référence, usage).';
+    }
+  }).finally(() => {
+    clearInterval(chrono);
+    clearTimeout(minuterie);
+    if (bouton) bouton.disabled = false;
   });
 }
 
 /* --- variantes : filtrage des options et prix de la variante choisie --- */
+/* --- lien vers la page de l'article sur le site internet --- */
+const ICONE_SITE = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false"><path d="M14 4h6v6M20 4l-9 9M18 13v6H5V6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+function lienSiteHtml(it) {
+  // Modèle : le lien du modèle d'abord ; il passe sur la variante choisie (options présélectionnées sur le site).
+  const lien = it.lien_site || '';
+  const variantes = it.est_modele && (it.variantes || []).some(v => v.lien_site);
+  if (!lien && !variantes) return '';
+  return '<div><a class="cat-site" data-code="' + esc(lien ? it.item_code : '') + '" ' + (lien ? 'href="' + esc(lien) + '"' : 'hidden') +
+    ' target="_blank" rel="noopener" onclick="return ouvrirSurLeSite(this)">' + ICONE_SITE + '<span>Voir sur le site</span></a></div>';
+}
+
+function majLienSite(card, variante, it) {
+  const a = card.querySelector('.cat-site');
+  if (!a) return;
+  const lien = (variante && variante.lien_site) || it.lien_site;
+  a.dataset.code = (variante && variante.lien_site) ? variante.item_code : (it.lien_site ? it.item_code : '');
+  if (lien) { a.setAttribute('href', lien); a.hidden = false; } else { a.removeAttribute('href'); a.hidden = true; }
+  a.querySelector('span').textContent = (variante && variante.lien_site) ? 'Voir cette variante sur le site' : 'Voir sur le site';
+}
+
+function ouvrirSurLeSite(a) {
+  // Popup DANS la fiche (demande du 04/11/2026), retirée de la page à la fermeture.
+  // ⚠️ ELLE N'EMBARQUE PAS LA PAGE DU SITE : le site interdit d'être intégré ailleurs (X-Frame-Options:
+  // SAMEORIGIN). Elle affiche ce que l'API publique du site dit de l'article (apercu_site) ; la page complète
+  // reste à un clic. Sans code (ancien lien) : le lien s'ouvre normalement dans un onglet.
+  const code = a.dataset.code, lien = a.getAttribute('href');
+  if (!code || !lien) return true;
+  fermerApercuSite();
+  const fond = document.createElement('div');
+  fond.className = 'cat-modal-fond';
+  fond.id = 'cat-apercu-site';
+  fond.innerHTML = '<div class="cat-modal" role="dialog" aria-modal="true" aria-label="L’article sur notre site">' +
+    '<div class="cat-modal-tete"><span>' + ICONE_SITE + ' Sur notre site</span><button type="button" class="cat-modal-x" aria-label="Fermer">✕</button></div>' +
+    '<div class="cat-modal-corps"><span class="cat-photo-attente">Chargement de la fiche du site…</span></div>' +
+    '<div class="cat-modal-pied"><a class="cat-btn secondaire" href="' + esc(lien) + '" target="_blank" rel="noopener">Ouvrir la page complète</a>' +
+    '<button type="button" class="cat-btn primaire" data-fermer>Fermer</button></div></div>';
+  fond.addEventListener('click', (e) => {
+    if (e.target === fond || e.target.closest('.cat-modal-x, [data-fermer]')) fermerApercuSite();
+  });
+  document.addEventListener('keydown', echapApercuSite);
+  document.body.appendChild(fond);
+  document.body.classList.add('cat-modal-ouvert');
+  fond.querySelector('.cat-modal-x').focus();
+
+  catGet('apercu_site', { item_code: code }).then(d => {
+    if (!fond.isConnected) return;               // refermée entre-temps
+    const corps = fond.querySelector('.cat-modal-corps');
+    const images = d.images || [];
+    let html = '';
+    if (images.length) {
+      html += '<img class="cat-modal-principale" src="' + esc(images[0].src) + '" alt="' + esc(images[0].alt || d.nom) + '">';
+      if (images.length > 1) {
+        html += '<div class="cat-modal-vignettes">' + images.map(i =>
+          '<img src="' + esc(i.vignette) + '" data-src="' + esc(i.src) + '" alt="' + esc(i.alt) + '">').join('') + '</div>';
+      }
+    }
+    html += '<div class="cat-modal-nom">' + esc(d.nom) + '</div>';
+    if (d.variation) html += '<div class="cat-modal-variation">' + esc(d.variation) + '</div>';
+    if (d.resume) html += '<div class="cat-modal-texte">' + d.resume + '</div>';      // HTML nettoyé côté serveur
+    if (d.description) html += '<div class="cat-modal-texte">' + d.description + '</div>';
+    corps.innerHTML = html;
+    corps.querySelectorAll('.cat-modal-vignettes img').forEach(v => v.addEventListener('click', () => {
+      corps.querySelector('.cat-modal-principale').src = v.dataset.src;
+    }));
+    if (d.lien) fond.querySelector('.cat-modal-pied a').setAttribute('href', d.lien);
+  }).catch(err => {
+    if (!fond.isConnected) return;
+    fond.querySelector('.cat-modal-corps').innerHTML = '<div class="cat-err">' + esc(err.message) +
+      ' Vous pouvez ouvrir la page complète du site.</div>';
+  });
+  return false;
+}
+
+function echapApercuSite(e) { if (e.key === 'Escape') fermerApercuSite(); }
+
+function fermerApercuSite() {
+  const fond = document.getElementById('cat-apercu-site');
+  if (fond) fond.remove();
+  document.body.classList.remove('cat-modal-ouvert');
+  document.removeEventListener('keydown', echapApercuSite);
+}
+
+function afficherPhoto(card, src, repli) {
+  // Remplace l'image de la carte. Si le fichier ne charge pas, on revient à `repli` (photo du modèle).
+  let actuel = card.querySelector('.cat-img');
+  if (!actuel) return;
+  if (!src) {
+    if (actuel.tagName === 'IMG') {
+      const vide = document.createElement('div');
+      vide.className = 'cat-img vide';
+      vide.textContent = '📦';
+      actuel.replaceWith(vide);
+    }
+    return;
+  }
+  if (actuel.tagName !== 'IMG') {
+    const img = document.createElement('img');
+    img.className = 'cat-img';
+    img.alt = '';
+    actuel.replaceWith(img);
+    actuel = img;
+  }
+  actuel.onerror = () => {
+    actuel.onerror = null;
+    if (repli && actuel.getAttribute('src') !== repli) actuel.setAttribute('src', repli);
+  };
+  if (actuel.getAttribute('src') !== src) actuel.setAttribute('src', src);
+}
+
 function changerVariante(select) {
   const card = select.closest('.cat-card');
   const it = CAT.cartes[card.dataset.code];
@@ -689,6 +918,13 @@ function changerVariante(select) {
   const btn = card.querySelector('.cat-add');
   const variante = (complet && candidates.length === 1) ? candidates[0]
     : (candidates.length === 1 && candidates[0] && selects.length === 0 ? candidates[0] : null);
+
+  // Photo : celle de la variante choisie ; tant que le choix est partiel, celle que partagent TOUTES les
+  // variantes encore possibles (ex. même configuration de filtration) ; sinon celle du modèle.
+  const photos = new Set(candidates.map(v => v.image).filter(Boolean));
+  afficherPhoto(card, (variante && variante.image) || (photos.size === 1 ? Array.from(photos)[0] : null) || it.image,
+                it.image);
+  majLienSite(card, variante, it);
 
   if (variante) {
     zone.innerHTML = '<div class="cat-meta">' + esc(variante.item_code) + '</div>' + prixHtml(variante);
@@ -760,19 +996,34 @@ function viderSelection() {
   document.querySelectorAll('.cat-add.ok').forEach(b => { b.classList.remove('ok'); b.textContent = '+ Ajouter'; });
 }
 
-function palierPour(paliers, qte) {
+function cumulsSelection() {
+  // {règle à seuil cumulé : quantité totale de la liste qu'elle couvre} — même calcul que _cumuls_mixtes.
+  const cumuls = {};
+  CAT.selection.forEach(s => {
+    const qte = Math.max(1, parseInt(s.qte, 10) || 1);
+    new Set((s.remises_quantite || []).filter(p => p.mixte && p.regle).map(p => p.regle))
+      .forEach(r => { cumuls[r] = (cumuls[r] || 0) + qte; });
+  });
+  return cumuls;
+}
+
+function quantitePalier(p, qte, cumuls) {
+  return (p.mixte && cumuls && cumuls[p.regle] !== undefined) ? cumuls[p.regle] : qte;
+}
+
+function palierPour(paliers, qte, cumuls) {
   let atteint = null, prochain = null;
   (paliers || []).forEach(p => {
-    if (Number(p.min_qty) <= qte) { if (!atteint || Number(p.pct) > Number(atteint.pct)) atteint = p; }
+    if (Number(p.min_qty) <= quantitePalier(p, qte, cumuls)) { if (!atteint || Number(p.pct) > Number(atteint.pct)) atteint = p; }
     else if (!prochain) prochain = p;
   });
   return { atteint, prochain };
 }
 
-function totalLigne(s) {
+function totalLigne(s, cumuls) {
   if (s.prix_ttc === null || s.prix_ttc === undefined) return null;
   const qte = Math.max(1, parseInt(s.qte, 10) || 1);
-  const { atteint } = palierPour(s.remises_quantite, qte);
+  const { atteint } = palierPour(s.remises_quantite, qte, cumuls || cumulsSelection());
   return Number(s.prix_ttc) * qte * (atteint ? 1 - Number(atteint.pct) / 100 : 1);
 }
 
@@ -794,15 +1045,22 @@ function renderSelection() {
     return;
   }
   let total = 0, totalStd = 0, prixConnus = true;
+  const cumuls = cumulsSelection();
   box.innerHTML = CAT.selection.map(s => {
     const qte = Math.max(1, parseInt(s.qte, 10) || 1);
-    const { atteint, prochain } = palierPour(s.remises_quantite, qte);
-    const t = totalLigne(s);
+    const { atteint, prochain } = palierPour(s.remises_quantite, qte, cumuls);
+    const t = totalLigne(s, cumuls);
     if (t === null) prixConnus = false; else { total += t; totalStd += Number(s.prix_standard_ttc || s.prix_ttc) * qte; }
     const codeJs = JSON.stringify(s.item_code).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     let palier = '';
-    if (atteint) palier += '<span class="cat-sel-palier atteint">✔ -' + String(atteint.pct).replace('.', ',') + ' % dès ' + atteint.min_qty + ' appliquée</span>';
-    if (prochain) palier += '<span class="cat-sel-palier">-' + String(prochain.pct).replace('.', ',') + ' % dès ' + prochain.min_qty + (atteint ? '' : ' : ajoutez ' + (prochain.min_qty - qte)) + '</span>';
+    // Seuil cumulé : on dit sur quoi il se compte (« 11 dans la liste, tous « Osmoseurs Domestiques » confondus »).
+    const portee = (p) => (p.mixte && p.portee) ? ' — ' + quantitePalier(p, qte, cumuls) + ' dans la liste, ' + esc(p.portee) : '';
+    if (atteint) palier += '<span class="cat-sel-palier atteint">✔ -' + String(atteint.pct).replace('.', ',') + ' % dès ' + atteint.min_qty + ' appliquée' + portee(atteint) + '</span>';
+    if (prochain) {
+      const manque = prochain.min_qty - quantitePalier(prochain, qte, cumuls);
+      palier += '<span class="cat-sel-palier">-' + String(prochain.pct).replace('.', ',') + ' % dès ' + prochain.min_qty +
+        ((prochain.mixte && prochain.portee) ? ' : ajoutez ' + manque + ', ' + esc(prochain.portee) : (atteint ? '' : ' : ajoutez ' + manque)) + '</span>';
+    }
     return '<div class="cat-sel-row"><div class="cat-sel-name">' + esc(s.item_name || s.item_code) +
       '<div class="cat-sel-code">' + esc(s.item_code) + '</div>' + palier + '</div>' +
       '<div class="cat-sel-prix">' + (fmtDT(s.prix_ttc) || 'Sur demande') + (s.remise_pct > 0 ? '<br><small>standard ' + fmtDT(s.prix_standard_ttc) + ' · -' + String(s.remise_pct).replace('.', ',') + ' %</small>' : '') + '</div>' +

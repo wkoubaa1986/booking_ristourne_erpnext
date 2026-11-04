@@ -273,7 +273,7 @@ class TestCatalogueClient(FrappeTestCase):
         with patch.object(cc.requests, "post", return_value=self._reponse_service([self.item_a, self.item_b])):
             r = cc.rechercher_articles(TOKEN, "osmoseur")
         a, b = r["results"]
-        self.assertEqual(a["remises_quantite"], [{"min_qty": 3, "pct": 10}])
+        self.assertEqual([(p["min_qty"], p["pct"], p["mixte"]) for p in a["remises_quantite"]], [(3, 10, 0)])
         self.assertEqual(b["remises_quantite"], [])
         # Un autre client (liste « Vente standard ») ne voit pas cette remise « Compte Pro ».
         with patch.object(cc.requests, "post", return_value=self._reponse_service([self.item_a])):
