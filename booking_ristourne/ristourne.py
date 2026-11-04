@@ -120,6 +120,9 @@ def generate_ristourne_report_with_token(token):
     customer = frappe.cache().get_value(f"session_token_{token}")
     if not customer:
         frappe.throw("Session expirée. Veuillez vous reconnecter.")
+    from booking_ristourne import journal
+
+    journal.tracer(customer, journal.RAPPORT)
     return generate_ristourne_report(customer)
 
 def generate_ristourne_report(customer):
@@ -178,6 +181,9 @@ def get_grouped_article_quantities_by_month_with_token(token):
     customer = frappe.cache().get_value(f"session_token_{token}")
     if not customer:
         frappe.throw("Session expirée. Veuillez vous reconnecter.")
+    from booking_ristourne import journal
+
+    journal.tracer(customer, journal.FAMILLES)
     return get_grouped_article_quantities_by_month(customer)
 
 def get_item_group_tree():
@@ -747,15 +753,10 @@ def get_user_pos_profile():
 
 @frappe.whitelist(allow_guest=True)
 def log_customer_login(customer_name):
-    print(f"[Login Log] customer={customer_name}")
-    doc = frappe.get_doc({
-        "doctype": "Ristourne Dashboard Logging",
-        "client": customer_name,
-        "logging_time": now()
-    })
-    doc.flags.ignore_permissions = True
-    doc.insert(ignore_permissions=True)
-    doc.submit()
+    # Même table qu'avant, mais typée « connexion » : les autres actions de la fiche s'y ajoutent (journal.py).
+    from booking_ristourne import journal
+
+    journal.tracer(customer_name, journal.CONNEXION)
     frappe.db.commit()
     return {
         "status": "logged",

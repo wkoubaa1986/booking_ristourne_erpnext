@@ -128,6 +128,13 @@ def _client_du_token(token: str | None) -> str:
     return customer
 
 
+def _tracer(customer: str, action: str, detail: str | None = None) -> None:
+    """Trace l'action dans le journal de la fiche (journal.py). Ne lève jamais : l'action passe d'abord."""
+    from booking_ristourne import journal
+
+    journal.tracer(customer, action, detail)
+
+
 def liste_de_prix_du_client(customer: str) -> str:
     """Liste de prix du client, puis de son groupe, sinon « Vente standard »."""
     price_list = frappe.db.get_value("Customer", customer, "default_price_list")
@@ -840,6 +847,7 @@ def rechercher_articles(token, query, item_group=None, limit=20):
         source = "erpnext" if codes else "ia"
 
     results = _details_articles(codes, price_list)
+    _tracer(customer, "recherche", "%s → %d" % (query, len(results)))
     return {
         "source": source,
         "liste_de_prix": price_list,
@@ -863,6 +871,7 @@ def rechercher_par_photo(token, query=None, item_group=None, limit=20):
     price_list = liste_de_prix_du_client(customer)
     codes, description = _appeler_product_search_photo(octets, nom, content_type, query, limit, item_group)
     results = _details_articles(codes, price_list)
+    _tracer(customer, "photo", "%s → %d" % (description or query or "photo", len(results)))
     return {
         "source": "photo",
         "liste_de_prix": price_list,
@@ -881,11 +890,12 @@ def apercu_site(token, item_code):
     client affiche photos et description dans sa propre popup, avec un lien vers la page complète. Une
     variation a son entrée dans cette API (photo, description, options) : c'est elle qu'on lit, pas le modèle.
     """
-    _client_du_token(token)
+    customer = _client_du_token(token)
     item_code = (item_code or "").strip()
     base, woocommerce_id = _ids_site([item_code]).get(item_code, (None, None))
     if not woocommerce_id:
         frappe.throw(_("Cet article n'est pas présenté sur le site."))
+    _tracer(customer, "apercu_site", item_code)
     attributs = {}
     modele = frappe.db.get_value("Item", item_code, "variant_of")
     lien = lien_produit(base, woocommerce_id)
@@ -1072,6 +1082,7 @@ def creer_liste_prix(token, articles):
     doc.flags.ignore_permissions = True
     doc.insert(ignore_permissions=True)
     doc.submit()
+    _tracer(customer, "liste_prix", "%s (%d articles)" % (doc.name, len(details)))
     frappe.db.commit()
     return {
         "name": doc.name,
@@ -1126,6 +1137,7 @@ def telecharger_liste_prix(token, name):
     print_format = PRINT_FORMAT_CLIENT if frappe.db.exists("Print Format", PRINT_FORMAT_CLIENT) else None
     pdf = frappe.get_print("Liste prix documents", name, print_format=print_format, as_pdf=True,
                            no_letterhead=1)
+    _tracer(customer, "pdf_liste", name)
     frappe.local.response.filename = f"{name}.pdf"
     frappe.local.response.filecontent = pdf
     frappe.local.response.type = "pdf"
