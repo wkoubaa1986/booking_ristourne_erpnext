@@ -270,6 +270,8 @@ fixtures = [
             ["name", "in", [
                 "Aqua World BC", "Aqua World BL", "Aqua world Devis", "Aqua World Facture",
                 "Liste prix client",
+                # Catalogue des « Liste prix documents » : attributs des variantes sous le nom de l'article (11/11/2026).
+                "Liste des prix",
             ]]
         ]
     },
