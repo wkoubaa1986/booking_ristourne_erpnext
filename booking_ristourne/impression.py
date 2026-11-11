@@ -63,6 +63,9 @@ def styles_slogans(reglages: dict) -> dict:
         else:
             saisi = str(saisi or "").strip()
             styles[champ] = saisi if _COULEUR.match(saisi) else defaut
+    # Gras au choix pour chaque ligne (cases à cocher) ; `*_graisse` est la valeur CSS prête à l'emploi.
+    for ligne in ("slogan", "slogan_2"):
+        styles[ligne + "_graisse"] = "bold" if reglages.get(ligne + "_gras") else "normal"
     return styles
 
 
@@ -248,6 +251,9 @@ def initialiser():
     for champ, defaut in STYLE_DEFAUTS.items():
         if not doc.get(champ):
             doc.set(champ, defaut)
+    # Les deux lignes sous le logo étaient en gras dans l'en-tête des documents de vente : on garde cet aspect.
+    doc.slogan_gras = 1
+    doc.slogan_2_gras = 1
     doc.pied_actif = 1
     doc.pied_taille = PIED_TAILLE_DEFAUT
     if not doc.get("comptes_bancaires"):

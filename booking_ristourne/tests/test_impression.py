@@ -91,7 +91,13 @@ class TestPiedDePage(unittest.TestCase):
 
 class TestStylesSlogans(unittest.TestCase):
     def test_rien_de_saisi_valeurs_d_origine(self):
-        self.assertEqual(styles_slogans({}), STYLE_DEFAUTS)
+        styles = styles_slogans({})
+        self.assertEqual({k: styles[k] for k in STYLE_DEFAUTS}, STYLE_DEFAUTS)
+
+    def test_gras_par_ligne(self):
+        styles = styles_slogans({"slogan_gras": 1, "slogan_2_gras": 0})
+        self.assertEqual(styles["slogan_graisse"], "bold")
+        self.assertEqual(styles["slogan_2_graisse"], "normal")
 
     def test_taille_et_couleur_saisies(self):
         styles = styles_slogans({"slogan_taille": 16, "slogan_couleur": "#FF0000", "slogan_2_couleur": "#abc"})

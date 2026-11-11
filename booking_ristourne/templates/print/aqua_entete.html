@@ -11,8 +11,8 @@
         {#- Taille donnée par le bloc, jamais par max-height : à l'écran Frappe force « td img { width: 100% } », et
             une hauteur plafonnée déformait alors le logo dans l'aperçu. -#}
         <div style="width: 97%;"><img src="{{ ident.logo_url }}" style="width: 100%; height: auto;"></div>
-        {% if ident.slogan %}<p style="margin: 2px 0 0 4px; line-height: {{ ident.slogan_taille + 2 }}px; font-style: italic; color:{{ ident.slogan_couleur }}; font-size:{{ ident.slogan_taille }}px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>{% endif %}
-        {% if ident.slogan_2 %}<p style="margin: 0 0 0 4px; line-height: {{ ident.slogan_2_taille + 1.5 }}px; font-style: italic; color:{{ ident.slogan_2_couleur }}; font-size:{{ ident.slogan_2_taille }}px; font-family:'FancyFont', sans-serif;">{{ ident.slogan_2 }}</p>{% endif %}
+        {% if ident.slogan %}<p style="margin: 2px 0 0 4px; line-height: {{ ident.slogan_taille + 2 }}px; font-style: italic; font-weight: {{ ident.slogan_graisse }}; color:{{ ident.slogan_couleur }}; font-size:{{ ident.slogan_taille }}px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>{% endif %}
+        {% if ident.slogan_2 %}<p style="margin: 0 0 0 4px; line-height: {{ ident.slogan_2_taille + 1.5 }}px; font-style: italic; font-weight: {{ ident.slogan_2_graisse }}; color:{{ ident.slogan_2_couleur }}; font-size:{{ ident.slogan_2_taille }}px; font-family:'FancyFont', sans-serif;">{{ ident.slogan_2 }}</p>{% endif %}
       </td>
       {#- Un seul compte : présentation d'origine, inchangée. Plusieurs comptes : lignes resserrées (police 10px,
           sans la ligne vide du haut) pour que l'en-tête garde la même hauteur avec deux comptes et ne pousse pas le
