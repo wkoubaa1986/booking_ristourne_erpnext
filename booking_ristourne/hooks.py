@@ -246,7 +246,19 @@ doctype_js = {"Sales Order": "public/js/sales_order_ristourne_bandeau.js"}
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
-after_migrate = ["booking_ristourne.pos_setup.sync_pos_profiles"]
+after_migrate = [
+    "booking_ristourne.pos_setup.sync_pos_profiles",
+    # Onglet « Identité & impression » d'AquaWorld Settings : valeurs d'origine au premier passage.
+    "booking_ristourne.impression.initialiser",
+]
+
+# Formats d'impression : coordonnées de la société et marges lues dans AquaWorld Settings (impression.py).
+jinja = {
+    "methods": [
+        "booking_ristourne.impression.aqua_identite",
+        "booking_ristourne.impression.aqua_marges_css",
+    ],
+}
 
 fixtures = [
     # ---- Scripts ----

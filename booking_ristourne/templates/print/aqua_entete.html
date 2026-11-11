@@ -1,0 +1,21 @@
+{#- En-tête commun des Devis, Bons de commande, Bons de livraison et Factures (11/11/2026) : logo, nom, slogan,
+    RC, banque, RIB, site, e-mail. Inclus par ces quatre formats : le modifier ici les change tous.
+    `ident` = aqua_identite() (AquaWorld Settings, onglet « Identité & impression »). -#}
+<table class="table1 no-margin" style="width: 100%;">
+  <tbody>
+    <tr>
+      <td style="width: 21%;"><img src="{{ ident.logo_url }}" style="max-height: 100px;"></td>
+      <td style="width: 50%; text-align: left; padding-top: 60px;">
+        <br><k1>{{ ident.nom_commercial }}</k1>
+        <p style="font-style: italic; color:#5E1914; font-size:13px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>
+      </td>
+      <td style="width: 30%; text-align: right; font-size: 11px;">
+        <p><br>RC: {{ ident.registre_commerce }}</p>
+        <p>{{ ident.banque }}</p>
+        <p>RIB:{{ ident.rib }}</p>
+        <p>{{ ident.site_web }}</p>
+        <p>{{ ident.email_societe }}</p>
+      </td>
+    </tr>
+  </tbody>
+</table>
