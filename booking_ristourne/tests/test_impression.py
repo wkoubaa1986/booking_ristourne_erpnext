@@ -4,7 +4,7 @@ import unittest
 
 from booking_ristourne.impression import (
     COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, STYLE_DEFAUTS, comptes_bancaires, css_marges, lignes_composees,
-    styles_slogans, valeurs_identite,
+    html_pied, lignes_pied, styles_slogans, valeurs_identite,
 )
 
 
@@ -46,6 +46,47 @@ class TestLignesComposees(unittest.TestCase):
         lignes = lignes_composees(DEFAUTS, {"lignes_entete": "WhatsApp : 98\n\n  Horaires : 8h-17h ", "lignes_societe": None})
         self.assertEqual(lignes["lignes_entete"], ["WhatsApp : 98", "Horaires : 8h-17h"])
         self.assertEqual(lignes["lignes_societe"], [])
+
+
+class TestDeuxMobiles(unittest.TestCase):
+    def test_deux_mobiles_sans_fixe(self):
+        v = dict(DEFAUTS, tel_fixe="", tel_mobile_2="25 511 119")
+        lignes = lignes_composees(v)
+        self.assertEqual(lignes["telephones"], "Mobile: 98 511 119 / 25 511 119")
+        self.assertEqual(lignes["tel_email_commercial"], "Tél : 98 511 119 / 25 511 119 — sales@aquaworldservicing.com")
+
+    def test_fixe_et_deux_mobiles(self):
+        v = dict(DEFAUTS, tel_mobile_2="25 511 119")
+        self.assertEqual(lignes_composees(v)["telephones"], "Tél Fixe: 31 248 723, Mobile: 98 511 119 / 25 511 119")
+
+
+class TestPiedDePage(unittest.TestCase):
+    def test_ligne_automatique_adresse_banque_site(self):
+        self.assertEqual(
+            lignes_pied(DEFAUTS, [COMPTE_ORIGINE]),
+            ["22 Rue du parc, 2036 Soukra - Tunis, Tunisie · Banque Zitouna-AOUINA — RIB : 2501 4000 0000657260 91"
+             " · www.aquaworldservicing.com"],
+        )
+
+    def test_texte_libre_prioritaire_une_ligne_par_ligne(self):
+        self.assertEqual(lignes_pied(DEFAUTS, [COMPTE_ORIGINE], "Ligne A\n\n Ligne B "), ["Ligne A", "Ligne B"])
+
+    def test_html_gras_taille_et_echappement(self):
+        html = html_pied(["A & B <i>"], taille=9, gras=True)
+        self.assertIn('id="footer-html"', html)
+        self.assertIn("font-size: 9px;", html)
+        self.assertIn("font-weight: bold;", html)
+        self.assertIn("A &amp; B &lt;i&gt;", html)
+        self.assertIn("font-weight: normal;", html_pied(["x"]))
+        self.assertIn("font-size: 8px;", html_pied(["x"]))
+
+    def test_aucune_ligne_aucun_pied(self):
+        self.assertEqual(html_pied([]), "")
+
+    def test_marge_du_bas_relevee_avec_un_pied(self):
+        self.assertIn("margin-bottom: 12mm;", css_marges({"marge_haut": 5, "marge_bas": 5, "marge_gauche": 5, "marge_droite": 5}, 12))
+        self.assertIn("margin-bottom: 15mm;", css_marges({"marge_bas": 15}, 12))
+        self.assertIn("margin-bottom: 15mm;", css_marges(None, 12))
 
 
 class TestStylesSlogans(unittest.TestCase):

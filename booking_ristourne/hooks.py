@@ -257,6 +257,7 @@ jinja = {
     "methods": [
         "booking_ristourne.impression.aqua_identite",
         "booking_ristourne.impression.aqua_marges_css",
+        "booking_ristourne.impression.aqua_pied_page",
     ],
 }
 

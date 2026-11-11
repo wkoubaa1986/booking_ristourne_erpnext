@@ -29,6 +29,7 @@ DEFAUTS = {
     "adresse_pays": "Tunisie",
     "tel_fixe": "31 248 723",
     "tel_mobile": "98 511 119",
+    "tel_mobile_2": "",  # second mobile, imprimé après le premier : « Mobile: A / B »
     "email_societe": "aquaworld.servicing@gmail.com",
     "email_commercial": "sales@aquaworldservicing.com",
     "email_2": "",  # second e-mail des devis, BC, BL et factures, sous le premier
@@ -94,9 +95,10 @@ def lignes_composees(v: dict, reglages: dict | None = None) -> dict:
     ni de séparateur orphelin quand un champ a été vidé. Fonction pure."""
     reglages = reglages or {}
     ville_pays = _joindre(", ", v.get("adresse_ville"), v.get("adresse_pays"))
+    mobiles = _joindre(" / ", v.get("tel_mobile"), v.get("tel_mobile_2"))
     return {
         # « Tél Fixe: 31 248 723, Mobile: 98 511 119 »
-        "telephones": _joindre(", ", v.get("tel_fixe") and "Tél Fixe: " + v["tel_fixe"], v.get("tel_mobile") and "Mobile: " + v["tel_mobile"]),
+        "telephones": _joindre(", ", v.get("tel_fixe") and "Tél Fixe: " + v["tel_fixe"], mobiles and "Mobile: " + mobiles),
         # « 2036 Soukra - Tunis, Tunisie »
         "localite": _joindre(" - ", v.get("adresse_ligne2"), ville_pays),
         # « 22 Rue du parc, 2036 Soukra - Tunis, Tunisie »
@@ -106,7 +108,7 @@ def lignes_composees(v: dict, reglages: dict | None = None) -> dict:
         # « www.… · e-mail » (liste des prix)
         "site_email": _joindre(" · ", v.get("site_web"), v.get("email_societe")),
         # « Tél : 98 511 119 — sales@… » (liste de prix client)
-        "tel_email_commercial": _joindre(" — ", v.get("tel_mobile") and "Tél : " + v["tel_mobile"], v.get("email_commercial")),
+        "tel_email_commercial": _joindre(" — ", mobiles and "Tél : " + mobiles, v.get("email_commercial")),
         # Lignes libres : une par ligne saisie.
         "lignes_entete": _lignes(reglages.get("lignes_entete")),
         "lignes_societe": _lignes(reglages.get("lignes_societe")),
@@ -123,12 +125,51 @@ def comptes_bancaires(lignes: list | None) -> list:
     return [c for c in comptes if c["banque"] or c["rib"]] or [dict(COMPTE_ORIGINE)]
 
 
-def css_marges(ligne: dict | None) -> str:
+COTES = ("marge_haut", "marge_bas", "marge_gauche", "marge_droite")
+
+
+# ---- Pied de page (demande du 11/11/2026 : adresse en petit, banque et site web en bas de tous les documents) ----
+PIED_TAILLE_DEFAUT = 8.0
+# Hauteur qu'il faut au pied de page dans la marge du bas : en dessous, wkhtmltopdf le superpose au contenu.
+PIED_MARGE_BAS_MIN = 12.0
+
+
+def lignes_pied(v: dict, comptes: list, texte_libre=None) -> list:
+    """Les lignes du pied de page. Texte libre saisi → ses lignes, telles quelles. Sinon une ligne composée :
+    adresse · banque(s) et RIB · site web, sans les champs vides. Fonction pure."""
+    libres = _lignes(texte_libre)
+    if libres:
+        return libres
+    adresse = lignes_composees(v)["adresse_une_ligne"]
+    banques = [_joindre(" — ", c.get("banque"), c.get("rib") and "RIB : " + c["rib"]) for c in comptes or []]
+    ligne = _joindre(" · ", adresse, *banques, v.get("site_web"))
+    return [ligne] if ligne else []
+
+
+def html_pied(lignes: list, taille=None, gras=False) -> str:
+    """Le bloc que Frappe extrait pour en faire le pied répété de chaque page du PDF (id « footer-html »). Masqué
+    dans l'aperçu à l'écran (classe visible-pdf). Aucune ligne → chaîne vide. Fonction pure."""
+    if not lignes:
+        return ""
+    taille = flt(taille)
+    taille = min(max(taille, TAILLE_MIN), 14.0) if taille > 0 else PIED_TAILLE_DEFAUT
+    style = "text-align: center; font-size: %gpx; line-height: 1.3; color: #444; font-weight: %s;" % (taille, "bold" if gras else "normal")
+    corps = "".join('<div style="%s">%s</div>' % (style, frappe.utils.escape_html(l)) for l in lignes)
+    return (
+        '<div id="footer-html" class="visible-pdf"><div class="letter-head-footer">'
+        '<div style="border-top: 1px solid #bbb; padding-top: 2px;">%s</div></div></div>' % corps
+    )
+
+
+def css_marges(ligne: dict | None, bas_minimum: float = 0) -> str:
     """La règle CSS que Frappe lit pour régler les marges du PDF (wkhtmltopdf) : uniquement des propriétés
     `margin-*` en mm posées sur `.print-format`. Aucune ligne pour ce format → chaîne vide : les marges restent
     celles d'avant. Fonction pure."""
     if not ligne:
-        return ""
+        if not bas_minimum:
+            return ""
+        ligne = dict(zip(COTES, (15, 15, 15, 15)))  # les marges par défaut de Frappe
+    ligne = dict(ligne, marge_bas=max(flt(ligne.get("marge_bas")), bas_minimum))
     regles = "".join(
         " margin-%s: %gmm;" % (cote, flt(ligne.get(champ)))
         for cote, champ in (("top", "marge_haut"), ("bottom", "marge_bas"), ("left", "marge_gauche"), ("right", "marge_droite"))
@@ -163,10 +204,22 @@ def aqua_identite() -> dict:
 
 def aqua_marges_css(print_format: str) -> str:
     """Pour les formats d'impression, dans le <head> : `{{ aqua_marges_css("Aqua World Facture") }}`."""
-    for ligne in _reglages().get("marges_impression") or []:
+    reglages = _reglages()
+    # Avec un pied de page, la marge du bas ne descend pas sous la hauteur du pied.
+    bas_minimum = PIED_MARGE_BAS_MIN if reglages.get("pied_actif") else 0
+    for ligne in reglages.get("marges_impression") or []:
         if ligne.get("print_format") == print_format:
-            return css_marges(ligne)
-    return ""
+            return css_marges(ligne, bas_minimum)
+    return css_marges(None, bas_minimum)
+
+
+def aqua_pied_page() -> str:
+    """Pour les formats d'impression, dans le <body> : `{{ aqua_pied_page() }}`. Vide si le pied est désactivé."""
+    reglages = _reglages()
+    if not reglages.get("pied_actif"):
+        return ""
+    ident = aqua_identite()
+    return html_pied(lignes_pied(ident, ident.comptes, reglages.get("pied_texte")), reglages.get("pied_taille"), reglages.get("pied_gras"))
 
 
 # Les formats de l'app et leurs marges d'avant, mesurées le 11/11/2026 : avec ces valeurs les PDF sont identiques au
@@ -180,9 +233,6 @@ MARGES_ORIGINE = {
     "Liste des prix": (15, 15, 15, 15),
     "Liste prix client": (15, 15, 15, 15),
 }
-COTES = ("marge_haut", "marge_bas", "marge_gauche", "marge_droite")
-
-
 def initialiser():
     """after_migrate : au premier passage après l'ajout de l'onglet, écrit les valeurs d'origine dans les champs, le
     compte bancaire et une ligne de marges par format, puis coche `identite_initialisee`. Ensuite ne touche plus à
@@ -198,6 +248,8 @@ def initialiser():
     for champ, defaut in STYLE_DEFAUTS.items():
         if not doc.get(champ):
             doc.set(champ, defaut)
+    doc.pied_actif = 1
+    doc.pied_taille = PIED_TAILLE_DEFAUT
     if not doc.get("comptes_bancaires"):
         doc.append("comptes_bancaires", dict(COMPTE_ORIGINE))
     if not doc.get("marges_impression"):
