@@ -27,19 +27,30 @@ DEFAUTS = {
     "email_commercial": "sales@aquaworldservicing.com",
     "site_web": "www.aquaworldservicing.com",
     "registre_commerce": "B03172022019",
-    "banque": "Banque Zitouna-AOUINA",
-    "rib": "2501 4000 0000657260 91",
     "logo": "/files/logo.png",
     "logo_liste_client": "/files/Logo-AquaWorld-2.png",
     "qr_code": "/files/scan.JPG",
     "cachet": "/files/Cachet + signature.jpeg",
 }
 IMAGES = ("logo", "logo_liste_client", "qr_code", "cachet")
+# Le compte bancaire d'origine. Les comptes se saisissent dans le tableau « Comptes bancaires » (un par ligne) ;
+# tous sont imprimés dans l'en-tête, l'un sous l'autre, dans l'ordre du tableau (choix utilisateur 11/11/2026).
+COMPTE_ORIGINE = {"banque": "Banque Zitouna-AOUINA", "rib": "2501 4000 0000657260 91"}
 
 
 def valeurs_identite(reglages: dict) -> dict:
     """Les valeurs saisies, complétées par DEFAUTS pour les champs vides. Fonction pure."""
     return {champ: (str(reglages.get(champ) or "").strip() or defaut) for champ, defaut in DEFAUTS.items()}
+
+
+def comptes_bancaires(lignes: list | None) -> list:
+    """Les comptes du tableau qui ont au moins une banque ou un RIB, dans l'ordre ; tableau vide → le compte
+    d'origine (un document ne s'imprime jamais sans coordonnées bancaires). Fonction pure."""
+    comptes = [
+        {"banque": str(l.get("banque") or "").strip(), "rib": str(l.get("rib") or "").strip()}
+        for l in (lignes or [])
+    ]
+    return [c for c in comptes if c["banque"] or c["rib"]] or [dict(COMPTE_ORIGINE)]
 
 
 def css_marges(ligne: dict | None) -> str:
@@ -68,7 +79,11 @@ def _reglages() -> dict:
 def aqua_identite() -> dict:
     """Pour les formats d'impression : `{% set ident = aqua_identite() %}` puis `{{ ident.rib }}`…
     Les images sont rendues en URL complète (`ident.logo_url`…), comme l'exige wkhtmltopdf."""
-    ident = frappe._dict(valeurs_identite(_reglages()))
+    reglages = _reglages()
+    ident = frappe._dict(valeurs_identite(reglages))
+    ident.comptes = [frappe._dict(c) for c in comptes_bancaires(reglages.get("comptes_bancaires"))]
+    # Le premier compte reste accessible directement (ident.banque, ident.rib).
+    ident.banque, ident.rib = ident.comptes[0].banque, ident.comptes[0].rib
     for champ in IMAGES:
         ident[champ + "_url"] = frappe.utils.get_url(frappe.utils.quote(ident[champ], safe="/:"))
     return ident
@@ -109,6 +124,9 @@ def initialiser():
         if not doc.get(champ):
             doc.set(champ, defaut)
             change = True
+    if not doc.get("comptes_bancaires"):
+        doc.append("comptes_bancaires", dict(COMPTE_ORIGINE))
+        change = True
     if premiere_fois and not doc.get("marges_impression"):
         for nom, marges in MARGES_ORIGINE.items():
             if frappe.db.exists("Print Format", nom):

@@ -2,24 +2,34 @@
 Lancer : ../../env/bin/python -m unittest booking_ristourne.tests.test_impression (depuis apps/booking_ristourne)."""
 import unittest
 
-from booking_ristourne.impression import DEFAUTS, MARGES_ORIGINE, css_marges, valeurs_identite
+from booking_ristourne.impression import COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, comptes_bancaires, css_marges, valeurs_identite
 
 
 class TestIdentite(unittest.TestCase):
     def test_champ_vide_reprend_la_valeur_d_origine(self):
-        ident = valeurs_identite({"rib": "", "banque": None, "email_societe": "   "})
-        self.assertEqual(ident["rib"], DEFAUTS["rib"])
-        self.assertEqual(ident["banque"], DEFAUTS["banque"])
+        ident = valeurs_identite({"site_web": "", "slogan": None, "email_societe": "   "})
+        self.assertEqual(ident["site_web"], DEFAUTS["site_web"])
+        self.assertEqual(ident["slogan"], DEFAUTS["slogan"])
         self.assertEqual(ident["email_societe"], DEFAUTS["email_societe"])
 
     def test_valeur_saisie_prioritaire(self):
-        ident = valeurs_identite({"rib": " TN59 1234 ", "site_web": "www.exemple.tn"})
-        self.assertEqual(ident["rib"], "TN59 1234")
+        ident = valeurs_identite({"tel_fixe": " 71 000 000 ", "site_web": "www.exemple.tn"})
+        self.assertEqual(ident["tel_fixe"], "71 000 000")
         self.assertEqual(ident["site_web"], "www.exemple.tn")
         self.assertEqual(ident["slogan"], DEFAUTS["slogan"])
 
     def test_tous_les_champs_sont_rendus(self):
         self.assertEqual(set(valeurs_identite({})), set(DEFAUTS))
+
+
+class TestComptesBancaires(unittest.TestCase):
+    def test_tableau_vide_rend_le_compte_d_origine(self):
+        self.assertEqual(comptes_bancaires(None), [COMPTE_ORIGINE])
+        self.assertEqual(comptes_bancaires([{"banque": " ", "rib": None}]), [COMPTE_ORIGINE])
+
+    def test_tous_les_comptes_dans_l_ordre_du_tableau(self):
+        comptes = comptes_bancaires([{"banque": "Zitouna", "rib": " 25 "}, {"banque": "", "rib": ""}, {"banque": "BIAT", "rib": "08"}])
+        self.assertEqual(comptes, [{"banque": "Zitouna", "rib": "25"}, {"banque": "BIAT", "rib": "08"}])
 
 
 class TestMarges(unittest.TestCase):

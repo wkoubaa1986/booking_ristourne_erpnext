@@ -1,5 +1,5 @@
 {#- En-tête commun des Devis, Bons de commande, Bons de livraison et Factures (11/11/2026) : logo, nom, slogan,
-    RC, banque, RIB, site, e-mail. Inclus par ces quatre formats : le modifier ici les change tous.
+    RC, comptes bancaires (tous, l'un sous l'autre), site, e-mail. Inclus par ces quatre formats : le modifier ici les change tous.
     `ident` = aqua_identite() (AquaWorld Settings, onglet « Identité & impression »). -#}
 <table class="table1 no-margin" style="width: 100%;">
   <tbody>
@@ -9,12 +9,19 @@
         <br><k1>{{ ident.nom_commercial }}</k1>
         <p style="font-style: italic; color:#5E1914; font-size:13px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>
       </td>
-      <td style="width: 30%; text-align: right; font-size: 11px;">
-        <p><br>RC: {{ ident.registre_commerce }}</p>
-        <p>{{ ident.banque }}</p>
-        <p>RIB:{{ ident.rib }}</p>
-        <p>{{ ident.site_web }}</p>
-        <p>{{ ident.email_societe }}</p>
+      {#- Un seul compte : présentation d'origine, inchangée. Plusieurs comptes : lignes resserrées (police 10px,
+          sans la ligne vide du haut) pour que l'en-tête garde la même hauteur avec deux comptes et ne pousse pas le
+          document sur une page de plus. -#}
+      {%- set serre = ident.comptes | length > 1 %}
+      {%- set p = '<p style="margin: 0; line-height: 12.5px;">' if serre else '<p>' %}
+      <td style="width: 30%; text-align: right; font-size: {{ '10px' if serre else '11px' }};">
+        {% if serre %}{{ p }}RC: {{ ident.registre_commerce }}</p>{% else %}<p><br>RC: {{ ident.registre_commerce }}</p>{% endif %}
+        {%- for compte in ident.comptes %}
+        {{ p }}{{ compte.banque }}</p>
+        {{ p }}RIB:{{ compte.rib }}</p>
+        {%- endfor %}
+        {{ p }}{{ ident.site_web }}</p>
+        {{ p }}{{ ident.email_societe }}</p>
       </td>
     </tr>
   </tbody>
