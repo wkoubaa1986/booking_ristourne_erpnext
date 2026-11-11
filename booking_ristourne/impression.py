@@ -10,6 +10,8 @@ morceau de ligne disparaît des documents. Deux exceptions : tant que la page n'
 `identite_initialisee`), les valeurs d'origine (DEFAUTS) servent de repli ; et une image vide reprend toujours celle
 d'origine, parce qu'une image manquante fait échouer la génération du PDF.
 """
+import re
+
 import frappe
 from frappe.utils import flt
 
@@ -29,6 +31,7 @@ DEFAUTS = {
     "tel_mobile": "98 511 119",
     "email_societe": "aquaworld.servicing@gmail.com",
     "email_commercial": "sales@aquaworldservicing.com",
+    "email_2": "",  # second e-mail des devis, BC, BL et factures, sous le premier
     "site_web": "www.aquaworldservicing.com",
     "registre_commerce": "B03172022019",
     "logo": "/files/Logo-AquaWorld-2.png",
@@ -36,6 +39,32 @@ DEFAUTS = {
     "cachet": "/files/Cachet + signature.jpeg",
 }
 IMAGES = ("logo", "qr_code", "cachet")
+# Taille (px) et couleur des deux lignes sous le logo, réglables dans la page. Contrairement aux textes, un réglage
+# vide ou invalide reprend la valeur d'origine : une taille nulle ou une couleur fausse casserait la mise en page.
+STYLE_DEFAUTS = {
+    "slogan_taille": 13.0,
+    "slogan_couleur": "#6b6b6b",
+    "slogan_2_taille": 11.5,
+    "slogan_2_couleur": "#1d4e89",
+}
+TAILLE_MIN, TAILLE_MAX = 6.0, 30.0
+_COULEUR = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def styles_slogans(reglages: dict) -> dict:
+    """Tailles (bornées à 6–30 px) et couleurs (#rgb ou #rrggbb) des deux lignes sous le logo. Fonction pure."""
+    styles = {}
+    for champ, defaut in STYLE_DEFAUTS.items():
+        saisi = reglages.get(champ)
+        if champ.endswith("_taille"):
+            taille = flt(saisi)
+            styles[champ] = min(max(taille, TAILLE_MIN), TAILLE_MAX) if taille > 0 else defaut
+        else:
+            saisi = str(saisi or "").strip()
+            styles[champ] = saisi if _COULEUR.match(saisi) else defaut
+    return styles
+
+
 # Le compte bancaire d'origine. Les comptes se saisissent dans le tableau « Comptes bancaires » (un par ligne) ;
 # tous sont imprimés dans l'en-tête, l'un sous l'autre, dans l'ordre du tableau (choix utilisateur 11/11/2026).
 COMPTE_ORIGINE = {"banque": "Banque Zitouna-AOUINA", "rib": "2501 4000 0000657260 91"}
@@ -123,6 +152,7 @@ def aqua_identite() -> dict:
     reglages = _reglages()
     ident = frappe._dict(valeurs_identite(reglages))
     ident.update(lignes_composees(ident, reglages))
+    ident.update(styles_slogans(reglages))
     ident.comptes = [frappe._dict(c) for c in comptes_bancaires(reglages.get("comptes_bancaires"))]
     # Le premier compte reste accessible directement (ident.banque, ident.rib).
     ident.banque, ident.rib = ident.comptes[0].banque, ident.comptes[0].rib
@@ -163,6 +193,9 @@ def initialiser():
     if doc.get("identite_initialisee"):
         return
     for champ, defaut in DEFAUTS.items():
+        if not doc.get(champ):
+            doc.set(champ, defaut)
+    for champ, defaut in STYLE_DEFAUTS.items():
         if not doc.get(champ):
             doc.set(champ, defaut)
     if not doc.get("comptes_bancaires"):

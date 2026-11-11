@@ -3,7 +3,8 @@ Lancer : ../../env/bin/python -m unittest booking_ristourne.tests.test_impressio
 import unittest
 
 from booking_ristourne.impression import (
-    COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, comptes_bancaires, css_marges, lignes_composees, valeurs_identite,
+    COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, STYLE_DEFAUTS, comptes_bancaires, css_marges, lignes_composees,
+    styles_slogans, valeurs_identite,
 )
 
 
@@ -45,6 +46,25 @@ class TestLignesComposees(unittest.TestCase):
         lignes = lignes_composees(DEFAUTS, {"lignes_entete": "WhatsApp : 98\n\n  Horaires : 8h-17h ", "lignes_societe": None})
         self.assertEqual(lignes["lignes_entete"], ["WhatsApp : 98", "Horaires : 8h-17h"])
         self.assertEqual(lignes["lignes_societe"], [])
+
+
+class TestStylesSlogans(unittest.TestCase):
+    def test_rien_de_saisi_valeurs_d_origine(self):
+        self.assertEqual(styles_slogans({}), STYLE_DEFAUTS)
+
+    def test_taille_et_couleur_saisies(self):
+        styles = styles_slogans({"slogan_taille": 16, "slogan_couleur": "#FF0000", "slogan_2_couleur": "#abc"})
+        self.assertEqual(styles["slogan_taille"], 16)
+        self.assertEqual(styles["slogan_couleur"], "#FF0000")
+        self.assertEqual(styles["slogan_2_couleur"], "#abc")
+        self.assertEqual(styles["slogan_2_taille"], STYLE_DEFAUTS["slogan_2_taille"])
+
+    def test_taille_bornee_et_couleur_invalide_refusee(self):
+        styles = styles_slogans({"slogan_taille": 200, "slogan_2_taille": 1, "slogan_couleur": "red; display:none", "slogan_2_couleur": "#12"})
+        self.assertEqual(styles["slogan_taille"], 30)
+        self.assertEqual(styles["slogan_2_taille"], 6)
+        self.assertEqual(styles["slogan_couleur"], STYLE_DEFAUTS["slogan_couleur"])
+        self.assertEqual(styles["slogan_2_couleur"], STYLE_DEFAUTS["slogan_2_couleur"])
 
 
 class TestComptesBancaires(unittest.TestCase):

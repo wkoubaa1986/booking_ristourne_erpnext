@@ -5,14 +5,14 @@
   <tbody>
     <tr>
       {#- Logo complet « AquaWorld & Servicing » (il porte le nom), puis les deux lignes : activité et slogan.
-          Le logo occupe environ 60 % de la largeur de la page (demande utilisateur) ; activité en gris italique,
-          slogan en bleu. -#}
+          Le logo occupe environ 60 % de la largeur de la page (demande utilisateur) ; taille et couleur des deux
+          lignes : AquaWorld Settings. -#}
       <td style="width: 62%; text-align: left; vertical-align: middle;">
         {#- Taille donnée par le bloc, jamais par max-height : à l'écran Frappe force « td img { width: 100% } », et
             une hauteur plafonnée déformait alors le logo dans l'aperçu. -#}
         <div style="width: 97%;"><img src="{{ ident.logo_url }}" style="width: 100%; height: auto;"></div>
-        {% if ident.slogan %}<p style="margin: 2px 0 0 4px; line-height: 15px; font-style: italic; color:#6b6b6b; font-size:13px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>{% endif %}
-        {% if ident.slogan_2 %}<p style="margin: 0 0 0 4px; line-height: 13px; font-style: italic; color:#1d4e89; font-size:11.5px; font-family:'FancyFont', sans-serif;">{{ ident.slogan_2 }}</p>{% endif %}
+        {% if ident.slogan %}<p style="margin: 2px 0 0 4px; line-height: {{ ident.slogan_taille + 2 }}px; font-style: italic; color:{{ ident.slogan_couleur }}; font-size:{{ ident.slogan_taille }}px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>{% endif %}
+        {% if ident.slogan_2 %}<p style="margin: 0 0 0 4px; line-height: {{ ident.slogan_2_taille + 1.5 }}px; font-style: italic; color:{{ ident.slogan_2_couleur }}; font-size:{{ ident.slogan_2_taille }}px; font-family:'FancyFont', sans-serif;">{{ ident.slogan_2 }}</p>{% endif %}
       </td>
       {#- Un seul compte : présentation d'origine, inchangée. Plusieurs comptes : lignes resserrées (police 10px,
           sans la ligne vide du haut) pour que l'en-tête garde la même hauteur avec deux comptes et ne pousse pas le
@@ -28,6 +28,7 @@
         {%- endfor %}
         {% if ident.site_web %}{{ p }}{{ ident.site_web }}</p>{% endif %}
         {% if ident.email_societe %}{{ p }}{{ ident.email_societe }}</p>{% endif %}
+        {% if ident.email_2 %}{{ p }}{{ ident.email_2 }}</p>{% endif %}
         {%- for ligne in ident.lignes_entete %}
         {{ p }}{{ ligne }}</p>
         {%- endfor %}
