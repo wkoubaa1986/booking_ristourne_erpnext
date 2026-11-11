@@ -10,6 +10,8 @@ morceau de ligne disparaît des documents. Deux exceptions : tant que la page n'
 `identite_initialisee`), les valeurs d'origine (DEFAUTS) servent de repli ; et une image vide reprend toujours celle
 d'origine, parce qu'une image manquante fait échouer la génération du PDF.
 """
+import json
+import os
 import re
 
 import frappe
@@ -183,6 +185,19 @@ def css_marges(ligne: dict | None, bas_minimum: float = 0) -> str:
     return "<style>.print-format {%s }\nhtml .print-format { margin: 0 !important; }</style>" % regles
 
 
+LOGO_LIVRE = "/assets/booking_ristourne/images/logo-aquaworld.png"
+
+
+def _fichier_public_absent(url: str) -> bool:
+    """Vrai seulement pour un « /files/… » public dont le fichier n'existe pas sur ce site."""
+    if not str(url or "").startswith("/files/"):
+        return False
+    try:
+        return not os.path.exists(frappe.get_site_path("public", "files", url[len("/files/"):]))
+    except Exception:
+        return False
+
+
 def _reglages() -> dict:
     try:
         return frappe.get_cached_doc(REGLAGES).as_dict()
@@ -200,6 +215,10 @@ def aqua_identite() -> dict:
     ident.comptes = [frappe._dict(c) for c in comptes_bancaires(reglages.get("comptes_bancaires"))]
     # Le premier compte reste accessible directement (ident.banque, ident.rib).
     ident.banque, ident.rib = ident.comptes[0].banque, ident.comptes[0].rib
+    # Le logo est aussi livré avec l'app : si le fichier désigné manque sur ce site, on prend celui-là — une image
+    # introuvable fait échouer tous les PDF (« broken image links »).
+    if _fichier_public_absent(ident.logo):
+        ident.logo = LOGO_LIVRE
     for champ in IMAGES:
         ident[champ + "_url"] = frappe.utils.get_url(frappe.utils.quote(ident[champ], safe="/:"))
     return ident
@@ -236,32 +255,40 @@ MARGES_ORIGINE = {
     "Liste des prix": (15, 15, 15, 15),
     "Liste prix client": (15, 15, 15, 15),
 }
+# Réglages de l'onglet « Identité & impression » tels que l'utilisateur les a mis au point sur le dev, figés le
+# 11/11/2026 pour le premier passage en prod (demande : « un patch de ce que j'ai dans la dev vers la prod »).
+REGLAGES_INITIAUX = os.path.join(os.path.dirname(__file__), "setup", "identite_impression.json")
+
+
+def reglages_initiaux() -> dict:
+    with open(REGLAGES_INITIAUX, encoding="utf-8") as f:
+        return json.load(f)
+
+
 def initialiser():
-    """after_migrate : au premier passage après l'ajout de l'onglet, écrit les valeurs d'origine dans les champs, le
-    compte bancaire et une ligne de marges par format, puis coche `identite_initialisee`. Ensuite ne touche plus à
-    rien : un champ vidé reste vide, une ligne supprimée n'est pas recréée."""
+    """after_migrate (et non patches.txt : les champs de ce doctype arrivent par les fixtures, importées APRÈS les
+    patches) : au premier passage, recopie dans AquaWorld Settings les réglages mis au point sur le dev (textes,
+    tailles, couleurs, pied de page, comptes bancaires, marges), puis coche `identite_initialisee`. Ensuite ne
+    touche plus à rien : ce qui est modifié ou vidé dans la page reste tel quel."""
     if not frappe.db.exists("DocType", REGLAGES) or not frappe.get_meta(REGLAGES).has_field("identite_initialisee"):
         return
     doc = frappe.get_doc(REGLAGES)
     if doc.get("identite_initialisee"):
         return
-    for champ, defaut in DEFAUTS.items():
-        if not doc.get(champ):
-            doc.set(champ, defaut)
-    for champ, defaut in STYLE_DEFAUTS.items():
-        if not doc.get(champ):
-            doc.set(champ, defaut)
-    # Les deux lignes sous le logo étaient en gras dans l'en-tête des documents de vente : on garde cet aspect.
-    doc.slogan_gras = 1
-    doc.slogan_2_gras = 1
-    doc.pied_actif = 1
-    doc.pied_taille = PIED_TAILLE_DEFAUT
-    if not doc.get("comptes_bancaires"):
-        doc.append("comptes_bancaires", dict(COMPTE_ORIGINE))
-    if not doc.get("marges_impression"):
-        for nom, marges in MARGES_ORIGINE.items():
-            if frappe.db.exists("Print Format", nom):
-                doc.append("marges_impression", {"print_format": nom, **dict(zip(COTES, marges))})
+    meta = frappe.get_meta(REGLAGES)
+    for champ, valeur in reglages_initiaux().items():
+        df = meta.get_field(champ)
+        if not df:
+            continue
+        if df.fieldtype == "Table":
+            doc.set(champ, [])
+            for ligne in valeur or []:
+                # une marge pour un format absent de ce site n'a pas de sens (et le lien serait invalide)
+                if ligne.get("print_format") and not frappe.db.exists("Print Format", ligne["print_format"]):
+                    continue
+                doc.append(champ, ligne)
+        else:
+            doc.set(champ, valeur)
     doc.identite_initialisee = 1
     doc.flags.ignore_permissions = True
     doc.flags.ignore_mandatory = True

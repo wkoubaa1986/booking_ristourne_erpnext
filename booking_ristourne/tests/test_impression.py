@@ -4,7 +4,7 @@ import unittest
 
 from booking_ristourne.impression import (
     COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, STYLE_DEFAUTS, comptes_bancaires, css_marges, lignes_composees,
-    html_pied, lignes_pied, styles_slogans, valeurs_identite,
+    html_pied, lignes_pied, reglages_initiaux, styles_slogans, valeurs_identite,
 )
 
 
@@ -46,6 +46,26 @@ class TestLignesComposees(unittest.TestCase):
         lignes = lignes_composees(DEFAUTS, {"lignes_entete": "WhatsApp : 98\n\n  Horaires : 8h-17h ", "lignes_societe": None})
         self.assertEqual(lignes["lignes_entete"], ["WhatsApp : 98", "Horaires : 8h-17h"])
         self.assertEqual(lignes["lignes_societe"], [])
+
+
+class TestReglagesInitiaux(unittest.TestCase):
+    """Le fichier recopié en prod au premier passage (setup/identite_impression.json)."""
+
+    def test_fichier_lisible_et_complet(self):
+        r = reglages_initiaux()
+        for champ in DEFAUTS:
+            self.assertIn(champ, r, champ)
+        self.assertNotIn("identite_initialisee", r)
+        self.assertTrue(r["comptes_bancaires"] and all(c.get("rib") for c in r["comptes_bancaires"]))
+
+    def test_une_marge_par_format_de_l_app(self):
+        formats = {m["print_format"] for m in reglages_initiaux()["marges_impression"]}
+        self.assertEqual(formats, set(MARGES_ORIGINE))
+
+    def test_images_designees(self):
+        r = reglages_initiaux()
+        for champ in ("logo", "qr_code", "cachet"):
+            self.assertTrue(str(r[champ]).startswith("/files/"), champ)
 
 
 class TestDeuxMobiles(unittest.TestCase):

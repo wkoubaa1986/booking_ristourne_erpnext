@@ -1,0 +1,81 @@
+{
+ "slogan": "Filtration et traitement des eaux",
+ "slogan_taille": 13.0,
+ "slogan_couleur": "#b0b0b0",
+ "slogan_gras": 0,
+ "slogan_2": "Une solution pour chaque besoin en eau",
+ "slogan_2_taille": 15.0,
+ "slogan_2_couleur": "#14437d",
+ "slogan_2_gras": 1,
+ "registre_commerce": "B03172022019",
+ "adresse_ligne1": "22 Rue du parc",
+ "adresse_ligne2": "2036 Soukra",
+ "adresse_ville": "Tunis",
+ "adresse_pays": "Tunisie",
+ "tel_fixe": "",
+ "tel_mobile": "25 511 119",
+ "tel_mobile_2": "98 511 119",
+ "email_societe": "contact@aquaworldservicing.com",
+ "email_2": "aquaworld.servicing@gmail.com",
+ "email_commercial": "sales@aquaworldservicing.com",
+ "site_web": "www.aquaworldservicing.com",
+ "lignes_entete": "",
+ "lignes_societe": "",
+ "comptes_bancaires": [
+  {
+   "banque": "Banque Zitouna-AOUINA",
+   "rib": "2501 4000 0000657260 91"
+  }
+ ],
+ "pied_actif": 1,
+ "pied_gras": 0,
+ "pied_taille": 8.0,
+ "pied_texte": null,
+ "logo": "/files/Logo-AquaWorld-2.png",
+ "qr_code": "/files/scan.JPG",
+ "cachet": "/files/Cachet + signature.jpeg",
+ "marges_impression": [
+  {
+   "print_format": "Aqua world Devis",
+   "marge_haut": 5.0,
+   "marge_bas": 5.0,
+   "marge_gauche": 10.0,
+   "marge_droite": 10.0
+  },
+  {
+   "print_format": "Aqua World BC",
+   "marge_haut": 5.0,
+   "marge_bas": 5.0,
+   "marge_gauche": 10.0,
+   "marge_droite": 10.0
+  },
+  {
+   "print_format": "Aqua World BL",
+   "marge_haut": 5.0,
+   "marge_bas": 5.0,
+   "marge_gauche": 10.0,
+   "marge_droite": 10.0
+  },
+  {
+   "print_format": "Aqua World Facture",
+   "marge_haut": 5.0,
+   "marge_bas": 5.0,
+   "marge_gauche": 10.0,
+   "marge_droite": 10.0
+  },
+  {
+   "print_format": "Liste des prix",
+   "marge_haut": 5.0,
+   "marge_bas": 5.0,
+   "marge_gauche": 10.0,
+   "marge_droite": 10.0
+  },
+  {
+   "print_format": "Liste prix client",
+   "marge_haut": 5.0,
+   "marge_bas": 5.0,
+   "marge_gauche": 10.0,
+   "marge_droite": 10.0
+  }
+ ]
+}
