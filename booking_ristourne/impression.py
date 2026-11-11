@@ -5,8 +5,10 @@ en dur dans chaque format d'impression (Devis, BC, BL, Facture, Liste des prix, 
 maintenant saisies une seule fois ; les formats les lisent par `aqua_identite()` et prennent leurs marges par
 `aqua_marges_css()` — deux fonctions exposées à Jinja (hooks.py, `jinja`).
 
-Un champ laissé vide retombe sur la valeur d'origine (DEFAUTS) : un format ne s'imprime jamais avec un trou, même
-avant que la page ait été remplie.
+Vider un champ, c'est ne plus l'imprimer (demande du 11/11/2026 : « je n'ai plus de numéro fixe ») : la ligne ou le
+morceau de ligne disparaît des documents. Deux exceptions : tant que la page n'a jamais été initialisée (case cachée
+`identite_initialisee`), les valeurs d'origine (DEFAUTS) servent de repli ; et une image vide reprend toujours celle
+d'origine, parce qu'une image manquante fait échouer la génération du PDF.
 """
 import frappe
 from frappe.utils import flt
@@ -39,8 +41,46 @@ COMPTE_ORIGINE = {"banque": "Banque Zitouna-AOUINA", "rib": "2501 4000 000065726
 
 
 def valeurs_identite(reglages: dict) -> dict:
-    """Les valeurs saisies, complétées par DEFAUTS pour les champs vides. Fonction pure."""
-    return {champ: (str(reglages.get(champ) or "").strip() or defaut) for champ, defaut in DEFAUTS.items()}
+    """Les valeurs à imprimer. Page initialisée : ce qui est saisi, un champ vide reste vide (= non imprimé), sauf
+    les images. Page jamais initialisée : les valeurs d'origine. Fonction pure."""
+    initialise = bool(reglages.get("identite_initialisee"))
+    valeurs = {}
+    for champ, defaut in DEFAUTS.items():
+        saisi = str(reglages.get(champ) or "").strip()
+        valeurs[champ] = saisi if (saisi or (initialise and champ not in IMAGES)) else defaut
+    return valeurs
+
+
+def _joindre(separateur: str, *morceaux) -> str:
+    return separateur.join(m for m in morceaux if m)
+
+
+def _lignes(texte) -> list:
+    return [l.strip() for l in str(texte or "").splitlines() if l.strip()]
+
+
+def lignes_composees(v: dict, reglages: dict | None = None) -> dict:
+    """Les lignes que les formats impriment d'un bloc, recomposées sans les champs vides : pas de « Tél Fixe: , »
+    ni de séparateur orphelin quand un champ a été vidé. Fonction pure."""
+    reglages = reglages or {}
+    ville_pays = _joindre(", ", v.get("adresse_ville"), v.get("adresse_pays"))
+    return {
+        # « Tél Fixe: 31 248 723, Mobile: 98 511 119 »
+        "telephones": _joindre(", ", v.get("tel_fixe") and "Tél Fixe: " + v["tel_fixe"], v.get("tel_mobile") and "Mobile: " + v["tel_mobile"]),
+        # « 2036 Soukra - Tunis, Tunisie »
+        "localite": _joindre(" - ", v.get("adresse_ligne2"), ville_pays),
+        # « 22 Rue du parc, 2036 Soukra - Tunis, Tunisie »
+        "adresse_une_ligne": _joindre(" - ", _joindre(", ", v.get("adresse_ligne1"), v.get("adresse_ligne2")), ville_pays),
+        # « 22 Rue du parc, 2036 Soukra - Tunis » (liste de prix client)
+        "adresse_sans_pays": _joindre(" - ", _joindre(", ", v.get("adresse_ligne1"), v.get("adresse_ligne2")), v.get("adresse_ville")),
+        # « www.… · e-mail » (liste des prix)
+        "site_email": _joindre(" · ", v.get("site_web"), v.get("email_societe")),
+        # « Tél : 98 511 119 — sales@… » (liste de prix client)
+        "tel_email_commercial": _joindre(" — ", v.get("tel_mobile") and "Tél : " + v["tel_mobile"], v.get("email_commercial")),
+        # Lignes libres : une par ligne saisie.
+        "lignes_entete": _lignes(reglages.get("lignes_entete")),
+        "lignes_societe": _lignes(reglages.get("lignes_societe")),
+    }
 
 
 def comptes_bancaires(lignes: list | None) -> list:
@@ -81,6 +121,7 @@ def aqua_identite() -> dict:
     Les images sont rendues en URL complète (`ident.logo_url`…), comme l'exige wkhtmltopdf."""
     reglages = _reglages()
     ident = frappe._dict(valeurs_identite(reglages))
+    ident.update(lignes_composees(ident, reglages))
     ident.comptes = [frappe._dict(c) for c in comptes_bancaires(reglages.get("comptes_bancaires"))]
     # Le premier compte reste accessible directement (ident.banque, ident.rib).
     ident.banque, ident.rib = ident.comptes[0].banque, ident.comptes[0].rib
@@ -112,27 +153,24 @@ COTES = ("marge_haut", "marge_bas", "marge_gauche", "marge_droite")
 
 
 def initialiser():
-    """after_migrate : à la première migration après l'ajout de l'onglet, écrit les valeurs d'origine dans les
-    champs vides et une ligne de marges par format, pour que la page s'ouvre remplie. Idempotent ; ensuite ne touche
-    plus à rien (une ligne de marges supprimée à la main n'est pas recréée)."""
-    if not frappe.db.exists("DocType", REGLAGES) or not frappe.get_meta(REGLAGES).has_field("marges_impression"):
+    """after_migrate : au premier passage après l'ajout de l'onglet, écrit les valeurs d'origine dans les champs, le
+    compte bancaire et une ligne de marges par format, puis coche `identite_initialisee`. Ensuite ne touche plus à
+    rien : un champ vidé reste vide, une ligne supprimée n'est pas recréée."""
+    if not frappe.db.exists("DocType", REGLAGES) or not frappe.get_meta(REGLAGES).has_field("identite_initialisee"):
         return
     doc = frappe.get_doc(REGLAGES)
-    premiere_fois = not any(doc.get(champ) for champ in DEFAUTS)
-    change = False
+    if doc.get("identite_initialisee"):
+        return
     for champ, defaut in DEFAUTS.items():
         if not doc.get(champ):
             doc.set(champ, defaut)
-            change = True
     if not doc.get("comptes_bancaires"):
         doc.append("comptes_bancaires", dict(COMPTE_ORIGINE))
-        change = True
-    if premiere_fois and not doc.get("marges_impression"):
+    if not doc.get("marges_impression"):
         for nom, marges in MARGES_ORIGINE.items():
             if frappe.db.exists("Print Format", nom):
                 doc.append("marges_impression", {"print_format": nom, **dict(zip(COTES, marges))})
-                change = True
-    if change:
-        doc.flags.ignore_permissions = True
-        doc.flags.ignore_mandatory = True
-        doc.save()
+    doc.identite_initialisee = 1
+    doc.flags.ignore_permissions = True
+    doc.flags.ignore_mandatory = True
+    doc.save()

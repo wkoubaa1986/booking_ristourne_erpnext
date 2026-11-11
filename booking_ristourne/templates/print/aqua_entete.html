@@ -7,7 +7,7 @@
       <td style="width: 21%;"><img src="{{ ident.logo_url }}" style="max-height: 100px;"></td>
       <td style="width: 50%; text-align: left; padding-top: 60px;">
         <br><k1>{{ ident.nom_commercial }}</k1>
-        <p style="font-style: italic; color:#5E1914; font-size:13px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>
+        {% if ident.slogan %}<p style="font-style: italic; color:#5E1914; font-size:13px; font-family:'FancyFont', sans-serif;">{{ ident.slogan }}</p>{% endif %}
       </td>
       {#- Un seul compte : présentation d'origine, inchangée. Plusieurs comptes : lignes resserrées (police 10px,
           sans la ligne vide du haut) pour que l'en-tête garde la même hauteur avec deux comptes et ne pousse pas le
@@ -15,13 +15,17 @@
       {%- set serre = ident.comptes | length > 1 %}
       {%- set p = '<p style="margin: 0; line-height: 12.5px;">' if serre else '<p>' %}
       <td style="width: 30%; text-align: right; font-size: {{ '10px' if serre else '11px' }};">
-        {% if serre %}{{ p }}RC: {{ ident.registre_commerce }}</p>{% else %}<p><br>RC: {{ ident.registre_commerce }}</p>{% endif %}
+        {#- Un champ vidé dans AquaWorld Settings n'est pas imprimé. -#}
+        {% if serre %}{% if ident.registre_commerce %}{{ p }}RC: {{ ident.registre_commerce }}</p>{% endif %}{% else %}<p><br>{% if ident.registre_commerce %}RC: {{ ident.registre_commerce }}{% endif %}</p>{% endif %}
         {%- for compte in ident.comptes %}
-        {{ p }}{{ compte.banque }}</p>
-        {{ p }}RIB:{{ compte.rib }}</p>
+        {% if compte.banque %}{{ p }}{{ compte.banque }}</p>{% endif %}
+        {% if compte.rib %}{{ p }}RIB:{{ compte.rib }}</p>{% endif %}
         {%- endfor %}
-        {{ p }}{{ ident.site_web }}</p>
-        {{ p }}{{ ident.email_societe }}</p>
+        {% if ident.site_web %}{{ p }}{{ ident.site_web }}</p>{% endif %}
+        {% if ident.email_societe %}{{ p }}{{ ident.email_societe }}</p>{% endif %}
+        {%- for ligne in ident.lignes_entete %}
+        {{ p }}{{ ligne }}</p>
+        {%- endfor %}
       </td>
     </tr>
   </tbody>

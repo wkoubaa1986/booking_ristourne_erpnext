@@ -2,24 +2,49 @@
 Lancer : ../../env/bin/python -m unittest booking_ristourne.tests.test_impression (depuis apps/booking_ristourne)."""
 import unittest
 
-from booking_ristourne.impression import COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, comptes_bancaires, css_marges, valeurs_identite
+from booking_ristourne.impression import (
+    COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, comptes_bancaires, css_marges, lignes_composees, valeurs_identite,
+)
 
 
 class TestIdentite(unittest.TestCase):
-    def test_champ_vide_reprend_la_valeur_d_origine(self):
-        ident = valeurs_identite({"site_web": "", "slogan": None, "email_societe": "   "})
-        self.assertEqual(ident["site_web"], DEFAUTS["site_web"])
-        self.assertEqual(ident["slogan"], DEFAUTS["slogan"])
-        self.assertEqual(ident["email_societe"], DEFAUTS["email_societe"])
+    def test_page_jamais_initialisee_valeurs_d_origine(self):
+        self.assertEqual(valeurs_identite({}), DEFAUTS)
 
-    def test_valeur_saisie_prioritaire(self):
-        ident = valeurs_identite({"tel_fixe": " 71 000 000 ", "site_web": "www.exemple.tn"})
-        self.assertEqual(ident["tel_fixe"], "71 000 000")
-        self.assertEqual(ident["site_web"], "www.exemple.tn")
-        self.assertEqual(ident["slogan"], DEFAUTS["slogan"])
+    def test_champ_vide_n_est_plus_imprime(self):
+        ident = valeurs_identite({"identite_initialisee": 1, "tel_fixe": "", "tel_mobile": " 98 511 119 ", "slogan": None})
+        self.assertEqual(ident["tel_fixe"], "")
+        self.assertEqual(ident["slogan"], "")
+        self.assertEqual(ident["tel_mobile"], "98 511 119")
 
-    def test_tous_les_champs_sont_rendus(self):
-        self.assertEqual(set(valeurs_identite({})), set(DEFAUTS))
+    def test_image_vide_reprend_celle_d_origine(self):
+        ident = valeurs_identite({"identite_initialisee": 1, "logo": "", "cachet": "/files/nouveau.png"})
+        self.assertEqual(ident["logo"], DEFAUTS["logo"])
+        self.assertEqual(ident["cachet"], "/files/nouveau.png")
+
+
+class TestLignesComposees(unittest.TestCase):
+    def test_valeurs_d_origine_lignes_d_origine(self):
+        lignes = lignes_composees(DEFAUTS)
+        self.assertEqual(lignes["telephones"], "Tél Fixe: 31 248 723, Mobile: 98 511 119")
+        self.assertEqual(lignes["localite"], "2036 Soukra - Tunis, Tunisie")
+        self.assertEqual(lignes["adresse_une_ligne"], "22 Rue du parc, 2036 Soukra - Tunis, Tunisie")
+        self.assertEqual(lignes["adresse_sans_pays"], "22 Rue du parc, 2036 Soukra - Tunis")
+        self.assertEqual(lignes["site_email"], "www.aquaworldservicing.com · aquaworld.servicing@gmail.com")
+        self.assertEqual(lignes["tel_email_commercial"], "Tél : 98 511 119 — sales@aquaworldservicing.com")
+
+    def test_sans_telephone_fixe(self):
+        v = dict(DEFAUTS, tel_fixe="")
+        self.assertEqual(lignes_composees(v)["telephones"], "Mobile: 98 511 119")
+
+    def test_tout_vide_aucun_separateur_orphelin(self):
+        lignes = lignes_composees({})
+        self.assertTrue(all(not lignes[k] for k in lignes))
+
+    def test_lignes_libres_une_par_ligne(self):
+        lignes = lignes_composees(DEFAUTS, {"lignes_entete": "WhatsApp : 98\n\n  Horaires : 8h-17h ", "lignes_societe": None})
+        self.assertEqual(lignes["lignes_entete"], ["WhatsApp : 98", "Horaires : 8h-17h"])
+        self.assertEqual(lignes["lignes_societe"], [])
 
 
 class TestComptesBancaires(unittest.TestCase):
