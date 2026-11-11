@@ -17,8 +17,10 @@ REGLAGES = "AquaWorld Settings"
 
 # Les valeurs qui étaient écrites en dur dans les formats au 11/11/2026.
 DEFAUTS = {
-    "nom_commercial": "Aqua World & Servicing",
+    # Les deux lignes imprimées sous le logo (demande du 11/11/2026 : le logo « AquaWorld & Servicing » complet
+    # sur tous les documents, à la place de l'icône + nom tapé, avec l'activité puis le slogan en dessous).
     "slogan": "Filtration et traitement des eaux",
+    "slogan_2": "Une solution pour chaque besoin en eau",
     "adresse_ligne1": "22 Rue du parc",
     "adresse_ligne2": "2036 Soukra",
     "adresse_ville": "Tunis",
@@ -29,12 +31,11 @@ DEFAUTS = {
     "email_commercial": "sales@aquaworldservicing.com",
     "site_web": "www.aquaworldservicing.com",
     "registre_commerce": "B03172022019",
-    "logo": "/files/logo.png",
-    "logo_liste_client": "/files/Logo-AquaWorld-2.png",
+    "logo": "/files/Logo-AquaWorld-2.png",
     "qr_code": "/files/scan.JPG",
     "cachet": "/files/Cachet + signature.jpeg",
 }
-IMAGES = ("logo", "logo_liste_client", "qr_code", "cachet")
+IMAGES = ("logo", "qr_code", "cachet")
 # Le compte bancaire d'origine. Les comptes se saisissent dans le tableau « Comptes bancaires » (un par ligne) ;
 # tous sont imprimés dans l'en-tête, l'un sous l'autre, dans l'ordre du tableau (choix utilisateur 11/11/2026).
 COMPTE_ORIGINE = {"banque": "Banque Zitouna-AOUINA", "rib": "2501 4000 0000657260 91"}
