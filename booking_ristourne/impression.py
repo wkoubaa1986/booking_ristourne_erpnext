@@ -293,3 +293,119 @@ def initialiser():
     doc.flags.ignore_permissions = True
     doc.flags.ignore_mandatory = True
     doc.save()
+
+
+# ---- Description d'un article sur le devis, la commande, le bon de livraison et la facture ----
+# Demande du 23/11/2026 : les descriptions riches (liste à puces et tableaux : sel par régénération, autonomie selon
+# la dureté) prenaient une demi-page et repoussaient les totaux sur une deuxième page. Trois causes, trois réponses :
+#   1. paragraphes, puces et tableaux gardaient les tailles et les marges par défaut du document au lieu de la petite
+#      taille de la description -> styles resserrés posés sur les balises (en ligne : le CSS d'impression de Frappe
+#      impose ses marges de cellule en `!important`) ;
+#   2. tout tenait dans la colonne « Article », 40 % de la largeur -> une description qui contient un tableau passe
+#      dans une bande sous la ligne, sur toute la largeur : le texte à gauche, les tableaux et leur titre à droite ;
+#   3. le tableau des articles est complété par des lignes vides jusqu'à 7 lignes -> la description rend sa hauteur
+#      (en lignes vides) et le modèle en retire autant, jamais une ligne d'article.
+# Le TEXTE n'est jamais modifié (« je ne veux pas que la description change ») : mêmes mots, mêmes puces, mêmes
+# tableaux. Une description simple (texte, paragraphes sans liste ni tableau) sort exactement comme avant.
+DESCRIPTION_TAILLE = "9px"
+_TEXTE = "font-size:%s !important;line-height:1.25 !important;" % DESCRIPTION_TAILLE
+_CASE = ("font-size:8.5px !important;line-height:1.2 !important;padding:1px 5px !important;"
+         "border:1px solid #ccc !important;text-align:center;vertical-align:middle;white-space:nowrap;")
+STYLES_DESCRIPTION = {
+    "p": _TEXTE + "margin:0 !important;padding:0 !important;",
+    "ul": _TEXTE + "margin:0 !important;padding:0 0 0 11px !important;",
+    "ol": _TEXTE + "margin:0 !important;padding:0 0 0 13px !important;",
+    "li": _TEXTE + "margin:0 !important;padding:0 !important;",
+    "table": "width:auto !important;margin:1px 0 3px 0 !important;border-collapse:collapse !important;",
+    "td": _CASE,
+    "th": _CASE,
+}
+FOND_ENTETE = "background-color:#f4f4f4 !important;"
+_COLONNE = "border:none !important;padding:0 %s 0 0 !important;vertical-align:top;width:%s;" + _TEXTE
+# Repères de hauteur, mesurés sur le PDF du 23/11/2026 : une ligne vide du tableau vaut un peu plus de deux lignes de
+# description ; la colonne « Article » porte environ 60 caractères, la bande 80 à gauche et 62 à droite.
+LIGNES_PAR_LIGNE_VIDE = 2.2
+LARGEUR_CELLULE, LARGEUR_GAUCHE, LARGEUR_DROITE, LARGEUR_BANDE = 60, 80, 62, 150
+_RICHE = re.compile(r"<(?:table|ul|ol)\b", re.I)
+_BALISE = re.compile(r"<(p|ul|ol|li|table|td|th)\b([^>]*)>", re.I)
+_TABLEAU = re.compile(r"<table\b.*?</table>", re.I | re.S)
+# Un tableau avec son titre : le paragraphe qui le précède immédiatement.
+_TABLEAU_TITRE = re.compile(r"(?:<p\b[^>]*>(?:(?!</p>).)*</p>\s*)?<table\b.*?</table>", re.I | re.S)
+_LIGNE = re.compile(r"<tr\b.*?</tr>", re.I | re.S)
+_STYLE = re.compile(r"""\bstyle\s*=\s*(["'])(.*?)\1""", re.I | re.S)
+_BLOC = re.compile(r"<(p|li)\b[^>]*>(.*?)</\1>", re.I | re.S)
+_TOUTE_BALISE = re.compile(r"<[^>]+>")
+
+
+def _poser_style(m, en_plus: str = "") -> str:
+    balise, attributs = m.group(1), m.group(2)
+    style = STYLES_DESCRIPTION[balise.lower()] + en_plus
+    deja = _STYLE.search(attributs)
+    if deja:   # le nôtre en dernier : il l'emporte sur une taille ou une marge venue de l'éditeur
+        attributs = "%sstyle=\"%s;%s\"%s" % (attributs[:deja.start()], deja.group(2).strip().rstrip(";").replace('"', "'"),
+                                             style, attributs[deja.end():])
+    else:
+        attributs = '%s style="%s"' % (attributs.rstrip(), style)
+    return "<%s%s>" % (balise, attributs)
+
+
+def _tableau_resserre(m) -> str:
+    """La première ligne d'un tableau (ses intitulés) sur fond gris, comme les en-têtes du document."""
+    premiere = [True]
+
+    def ligne(l):
+        fond = FOND_ENTETE if premiere[0] else ""
+        premiere[0] = False
+        return _BALISE.sub(lambda c: _poser_style(c, fond if c.group(1).lower() in ("td", "th") else ""), l.group(0))
+
+    return _BALISE.sub(_poser_style, _LIGNE.sub(ligne, m.group(0)), count=1)
+
+
+def _resserre(html: str) -> str:
+    morceaux, fin = [], 0
+    for m in _TABLEAU.finditer(html):
+        morceaux.append(_BALISE.sub(_poser_style, html[fin:m.start()]))
+        morceaux.append(_tableau_resserre(m))
+        fin = m.end()
+    morceaux.append(_BALISE.sub(_poser_style, html[fin:]))
+    return "".join(morceaux)
+
+
+def _nu(html: str) -> str:
+    return _TOUTE_BALISE.sub("", html or "").replace("&nbsp;", " ").strip()
+
+
+def _lignes_de_texte(html: str, largeur: int) -> float:
+    """Nombre de lignes imprimées, à peu près : chaque paragraphe ou puce va à la ligne, chaque rangée de tableau aussi."""
+    hors_tableaux = _TABLEAU.sub("", html)
+    blocs = [_nu(b.group(2)) for b in _BLOC.finditer(hors_tableaux)] or [_nu(hors_tableaux)]
+    lignes = sum(max(1, -(-len(b) // largeur)) for b in blocs if b)
+    return lignes + 1.3 * len(_LIGNE.findall(html))
+
+
+def aqua_description(texte) -> dict:
+    """Pour les formats d'impression : `{% set dsc = aqua_description(row.description) %}`, puis
+
+    - `dsc.cellule` : ce qui s'imprime sous le nom de l'article, dans la colonne « Article et Description » ;
+    - `dsc.bande` : ce qui s'imprime dans une ligne à part, sous l'article, sur toute la largeur (vide le plus souvent) ;
+    - `dsc.hauteur` : le nombre de lignes vides du tableau que cette description remplace (0 pour une description simple).
+    """
+    texte = texte or ""
+    if not _RICHE.search(texte):
+        return frappe._dict(cellule='<span style="font-size: %s">%s</span>' % (DESCRIPTION_TAILLE, texte), bande="", hauteur=0)
+    tableaux = [m.group(0) for m in _TABLEAU_TITRE.finditer(texte)]
+    if not tableaux:   # une liste à puces seule : elle reste sous le nom, resserrée
+        lignes = _lignes_de_texte(texte, LARGEUR_CELLULE)
+        return frappe._dict(cellule='<div style="%s">%s</div>' % (_TEXTE, _resserre(texte)), bande="",
+                            hauteur=max(0, int(-(-(lignes - 2) // LIGNES_PAR_LIGNE_VIDE))))
+    gauche, droite = _TABLEAU_TITRE.sub("", texte), "".join(tableaux)
+    if _nu(gauche):
+        lignes = max(_lignes_de_texte(gauche, LARGEUR_GAUCHE), _lignes_de_texte(droite, LARGEUR_DROITE))
+        colonnes = '<td style="%s">%s</td><td style="%s">%s</td>' % (
+            _COLONNE % ("14px", "56%"), _resserre(gauche), _COLONNE % ("0", "44%"), _resserre(droite))
+    else:              # rien que des tableaux
+        lignes = _lignes_de_texte(droite, LARGEUR_BANDE)
+        colonnes = '<td style="%s">%s</td>' % (_COLONNE % ("0", "100%"), _resserre(droite))
+    bande = ('<table style="width:100%% !important;margin:0 !important;border-collapse:collapse !important;">'
+             '<tr>%s</tr></table>' % colonnes)
+    return frappe._dict(cellule="", bande=bande, hauteur=int(round(lignes / LIGNES_PAR_LIGNE_VIDE)))

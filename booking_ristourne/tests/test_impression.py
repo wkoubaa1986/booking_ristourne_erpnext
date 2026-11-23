@@ -2,9 +2,14 @@
 Lancer : ../../env/bin/python -m unittest booking_ristourne.tests.test_impression (depuis apps/booking_ristourne)."""
 import unittest
 
+import json
+import os
+import re
+from collections import Counter
+
 from booking_ristourne.impression import (
-    COMPTE_ORIGINE, DEFAUTS, MARGES_ORIGINE, STYLE_DEFAUTS, comptes_bancaires, css_marges, lignes_composees,
-    html_pied, lignes_pied, reglages_initiaux, styles_slogans, valeurs_identite,
+    COMPTE_ORIGINE, DEFAUTS, FOND_ENTETE, MARGES_ORIGINE, STYLE_DEFAUTS, aqua_description, comptes_bancaires,
+    css_marges, lignes_composees, html_pied, lignes_pied, reglages_initiaux, styles_slogans, valeurs_identite,
 )
 
 
@@ -162,6 +167,124 @@ class TestMarges(unittest.TestCase):
     def test_un_jeu_de_marges_par_format(self):
         self.assertEqual(len(MARGES_ORIGINE), 6)
         self.assertTrue(all(len(m) == 4 for m in MARGES_ORIGINE.values()))
+
+
+# Description d'un adoucisseur telle que l'assistant articles l'écrit (23/11/2026) : titre, puces, deux tableaux
+# précédés chacun de son titre, une phrase de fin.
+ADOUCISSEUR = (
+    "<p><strong>Adoucisseur FRP 1035 — 30 L de résine cationique</strong></p>"
+    "<ul><li><strong>Tête automatique</strong> — Runxin F65B3, classe 2 m³/h.</li><li>Bac à sel séparé de 70 L.</li>"
+    "<li><strong>Régénération</strong> — Volumétrique immédiate ou retardée.</li></ul>"
+    "<p><strong>Par régénération, valeurs approximatives</strong></p>"
+    "<table><tbody><tr><td><strong>Sel utilisé</strong></td><td><strong>Eau ajoutée au bac</strong></td>"
+    "<td><strong>Saumure saturée obtenue</strong></td></tr><tr><td>4,5 kg</td><td>12,5 L</td><td>14,1 L</td></tr></tbody></table>"
+    "<p><strong>Autonomie théorique avant réserve</strong> — eau adoucie selon la dureté retirée.</p>"
+    "<table><tbody><tr><td><strong>20 °f</strong></td><td><strong>40 °f</strong></td><td><strong>60 °f</strong></td>"
+    "<td><strong>100 °f</strong></td></tr><tr><td>6 m³</td><td>3 m³</td><td>2 m³</td><td>1,2 m³</td></tr></tbody></table>"
+    "<p>Cette variante comprend le kit bypass Runxin F70B (Rn-41102).</p>"
+)
+
+
+def _mots(html):
+    return Counter(re.sub(r"<[^>]+>", " ", html).split())
+
+
+class TestDescriptionArticle(unittest.TestCase):
+    def test_description_simple_imprimee_comme_avant(self):
+        for texte in ("Filtre à sédiments 5 microns", "<p>Robinet chromé</p>", '<div class="ql-editor read-mode"><p>a</p><p>b</p></div>'):
+            d = aqua_description(texte)
+            self.assertEqual(d.cellule, '<span style="font-size: 9px">%s</span>' % texte)
+            self.assertEqual((d.bande, d.hauteur), ("", 0))
+
+    def test_description_vide(self):
+        d = aqua_description(None)
+        self.assertEqual((d.cellule, d.bande, d.hauteur), ('<span style="font-size: 9px"></span>', "", 0))
+
+    def test_tableaux_dans_une_bande_sous_la_ligne(self):
+        d = aqua_description(ADOUCISSEUR)
+        self.assertEqual(d.cellule, "")
+        gauche, droite = re.findall(r'<td style="border:none[^"]*">(.*?)</td>(?=<td style="border:none|</tr></table>$)', d.bande, re.S)
+        # À droite : chaque tableau avec le titre qui le précède. À gauche : le reste, dans l'ordre.
+        self.assertEqual(droite.count("<table"), 2)
+        self.assertLess(droite.index("Par régénération"), droite.index("Sel utilisé"))
+        self.assertLess(droite.index("Sel utilisé"), droite.index("Autonomie théorique"))
+        self.assertLess(droite.index("Autonomie théorique"), droite.index("20 °f"))
+        self.assertNotIn("<table", gauche)
+        self.assertLess(gauche.index("Adoucisseur FRP 1035"), gauche.index("Tête automatique"))
+        self.assertLess(gauche.index("Régénération"), gauche.index("Cette variante comprend"))
+
+    def test_le_texte_ne_change_pas(self):
+        """Mêmes mots, autant de fois : seule la mise en page bouge."""
+        self.assertEqual(_mots(aqua_description(ADOUCISSEUR).bande), _mots(ADOUCISSEUR))
+        liste = "<p>Filtre</p><ul><li>Cartouche 20 pouces.</li><li>Raccords 1 pouce.</li></ul>"
+        self.assertEqual(_mots(aqua_description(liste).cellule), _mots(liste))
+
+    def test_tailles_et_marges_resserrees(self):
+        bande = aqua_description(ADOUCISSEUR).bande
+        for balise in ("p", "ul", "li", "table", "td"):
+            for ouverture in re.findall(r"<%s\b[^>]*>" % balise, bande):
+                self.assertIn('style="', ouverture, ouverture)
+        self.assertIn("margin:0 !important", re.search(r"<p\b[^>]*>", bande).group(0))
+        case = re.search(r"<td style=\"font-size[^>]*>", bande).group(0)
+        self.assertIn("padding:1px 5px !important", case)       # le CSS d'impression de Frappe impose 6px !important
+        self.assertIn("font-size:8.5px !important", case)
+
+    def test_premiere_ligne_du_tableau_sur_fond_gris(self):
+        bande = aqua_description(ADOUCISSEUR).bande
+        tableau = re.search(r"<table style=\"width:auto.*?</table>", bande, re.S).group(0)
+        intitules, valeurs = re.findall(r"<tr\b.*?</tr>", tableau, re.S)
+        self.assertEqual(intitules.count(FOND_ENTETE), 3)
+        self.assertNotIn(FOND_ENTETE, valeurs)
+
+    def test_liste_seule_reste_sous_le_nom(self):
+        d = aqua_description("<p>Filtre</p><ul><li>Cartouche 20 pouces.</li><li>Raccords 1 pouce.</li></ul>")
+        self.assertEqual(d.bande, "")
+        self.assertTrue(d.cellule.startswith("<div "))
+        self.assertIn("padding:0 0 0 11px !important", d.cellule)
+        self.assertEqual(d.hauteur, 1)
+
+    def test_rien_que_des_tableaux_une_seule_colonne(self):
+        d = aqua_description("<table><tr><td>20 °f</td></tr><tr><td>6 m³</td></tr></table>")
+        self.assertEqual(d.bande.count('<td style="border:none'), 1)
+        self.assertIn("width:100%;", d.bande)
+
+    def test_style_de_l_editeur_garde_le_notre_l_emporte(self):
+        d = aqua_description('<p style="color: red; font-size: 20px">Rouge</p><ul><li>a</li></ul>')
+        p = re.search(r"<p\b[^>]*>", d.cellule).group(0)
+        self.assertIn("color: red", p)
+        self.assertLess(p.index("font-size: 20px"), p.index("font-size:9px !important"))
+        self.assertEqual(p.count("style="), 1)
+
+    def test_hauteur_rendue_au_modele(self):
+        # Environ neuf lignes de texte dans la bande : quatre lignes vides du tableau en moins.
+        self.assertEqual(aqua_description(ADOUCISSEUR).hauteur, 4)
+
+
+class TestModelesDescription(unittest.TestCase):
+    """Devis, commande, bon de livraison et facture impriment la description par aqua_description."""
+
+    def setUp(self):
+        chemin = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fixtures", "print_format.json")
+        with open(chemin, encoding="utf-8") as f:
+            self.formats = {d["name"]: d["html"] for d in json.load(f)}
+
+    def test_les_quatre_modeles(self):
+        for nom in ("Aqua World BC", "Aqua World BL", "Aqua world Devis", "Aqua World Facture"):
+            h = self.formats[nom]
+            self.assertNotIn("{{ row.description }}", h, nom)
+            self.assertEqual(h.count("{% set dsc = aqua_description(row.description) %}"), 1, nom)
+            self.assertIn("{{ dsc.cellule }}", h, nom)
+            self.assertIn('<tr class="bande"><td>&nbsp;</td><td colspan="7"', h, nom)
+            self.assertLess(h.index("{% set dh = namespace(n=0) %}"), h.index("{% for i in range(max(7"), nom)
+
+    def test_seules_des_lignes_vides_sont_retirees(self):
+        for nom, reste in (("Aqua World BC", "7 - rgh.n - dh.n"), ("Aqua World BL", "7 - rgh.n - dh.n"),
+                           ("Aqua world Devis", "7 - dh.n"), ("Aqua World Facture", "7 - dh.n")):
+            self.assertIn("{%% elif i < %s %%}\n      <tr><td>&nbsp;</td>" % reste, self.formats[nom], nom)
+
+    def test_fonction_exposee_aux_modeles(self):
+        from booking_ristourne import hooks
+        self.assertIn("booking_ristourne.impression.aqua_description", hooks.jinja["methods"])
 
 
 if __name__ == "__main__":

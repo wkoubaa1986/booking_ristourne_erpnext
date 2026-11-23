@@ -258,6 +258,8 @@ jinja = {
         "booking_ristourne.impression.aqua_identite",
         "booking_ristourne.impression.aqua_marges_css",
         "booking_ristourne.impression.aqua_pied_page",
+        # Description de l'article resserrée (listes et tableaux) sur devis, commande, BL et facture.
+        "booking_ristourne.impression.aqua_description",
     ],
 }
 
